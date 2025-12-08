@@ -2,7 +2,7 @@ name: Daily ECMWF Download
 
 on:
   schedule:
-    - cron: "* 11 * * *"  # every day at 02:00 UTC
+    - cron: "20 10 * * *"  # every day at 02:00 UTC
   workflow_dispatch:      # allows manual run
 
 jobs:
