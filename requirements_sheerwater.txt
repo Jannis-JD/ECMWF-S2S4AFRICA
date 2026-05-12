@@ -11,5 +11,5 @@ bottleneck
 geopandas
 rioxarray
 ipython
-sheerwater
+sheerwater==0.2.10
 tahmo @ git+https://github.com/rhiza-research/tahmo-api
