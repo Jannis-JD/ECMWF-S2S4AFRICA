@@ -30,7 +30,8 @@ forecast_files = {
     (5, 1): ["ECMWF_tp_forecasts_04-29-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_13_Kenya.nc","May_Dekad1.tif"],
     (5, 11): ["ECMWF_tp_forecasts_05-11-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_14_Kenya.nc","May_Dekad2.tif"],
     (5, 21): ["ECMWF_tp_forecasts_05-21-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_15_Kenya.nc","May_Dekad3.tif"],
-    (6, 1): ["ECMWF_tp_forecasts_06-01-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_16_Kenya.nc","June_Dekad1.tif"]
+    (6, 1): ["ECMWF_tp_forecasts_06-01-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_16_Kenya.nc","June_Dekad1.tif"],
+    (6, 11): ["ECMWF_tp_forecasts_06-11-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_17_Kenya.nc","June_Dekad2.tif"]
 }
 
 try:
