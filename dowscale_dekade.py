@@ -97,7 +97,10 @@ try:
             end_time=data_dekade.sel(step=forecast_timestep).valid_time
         fname=f'downscaled_rainfall_forecast_init_{str(data_dekade.time.values)[0:10]}_{fclim_chirps[2][i]}'
 
-        ds_to_plot.isel(step=i).rio.to_raster(dirname+fname)    
+        to_save=ds_to_plot.isel(step=i)
+        to_save.isel(step=i).rio.to_raster()    
+        to_save.rio.write_crs("EPSG:4326", inplace=True)
+        to_save.tp.T.rio.to_raster(f"{dirname+fname}.bil", driver="EHdr")
 
     gdf = gpd.read_file("downscale_data/Kenya_Counties_KNSDI.shp").set_crs("EPSG:4326")
 
