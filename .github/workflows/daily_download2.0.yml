@@ -29,34 +29,34 @@ jobs:
         with:
           python-version: "3.12"
 
-            #- name: Install dependencies
-            #  run: |
-            #    pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
 
-            #- name: Run download script
-            #  continue-on-error: true
-            #  run: |
-            #    python download_s2s.py
+      - name: Run download script
+        continue-on-error: true
+        run: |
+          python download_s2s.py
 
-            #- name: Generate plots
-            #  continue-on-error: true
-            #  run: |
-            #    python plot_s2s.py
+      - name: Generate plots
+        continue-on-error: true
+        run: |
+          python plot_s2s.py
 
-            #- name: perform downscaling
-            #  continue-on-error: true
-            #  run: |
-            #    python dowscale_dekade.py
+      - name: perform downscaling
+        continue-on-error: true
+        run: |
+          python dowscale_dekade.py
 
-            #- name: Save generated files in repo
-            #  continue-on-error: true
-            #  run: |
-            #    git config user.name "github-actions[bot]"
-            #    git config user.email "github-actions[bot]@users.noreply.github.com"
-            #    git add plots/
-            #    git add data/
-            #    git commit -m "Daily automated update" || echo "No changes to commit"
-            #    git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }}
+      - name: Save generated files in repo
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add plots/
+          git add data/
+          git commit -m "Daily automated update" || echo "No changes to commit"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }}
 
       
       - name: Install dependencies
@@ -124,15 +124,34 @@ jobs:
           - country: Kenya
             emails: >
               josh@rhizaresearch.org,
+              genevieve@rhizaresearch.org,
+              chriskngetich@gmail.com,
+              gacherujemimah@gmail.com,
+              mrforecasting@gmail.com,
+              koderaphillips@yahoo.com,
+              marykilavi@yahoo.com,
+              hwkimani1@gmail.com,
+              chrisfunk@ucsb.edu,
+              alec.jong@gmail.com,
+              uiyov@student.kit.edu,
+              sshukla@ucsb.edu 
           - country: Ghana
             emails: >
               josh@rhizaresearch.org,
+              genevieve@rhizaresearch.org,
+              C.M.Wainwright@leeds.ac.uk,
+              D.J.Parker@leeds.ac.uk
           - country: Senegal
             emails: >
               josh@rhizaresearch.org,
+              genevieve@rhizaresearch.org,
+              C.M.Wainwright@leeds.ac.uk,
+              D.J.Parker@leeds.ac.uk
           - country: Ethiopia
             emails: >
               josh@rhizaresearch.org,
+              genevieve@rhizaresearch.org,
+              katiekowal@uchicago.edu
     runs-on: ubuntu-latest
     steps:
       - name: Get current date
