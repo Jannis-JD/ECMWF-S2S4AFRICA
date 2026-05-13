@@ -2,6 +2,7 @@
 import os
 import argparse
 from datetime import datetime, timedelta
+from dateutil import parser as dateparser
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm
@@ -25,19 +26,21 @@ parser.add_argument("--country", type=str, default="Kenya,Ghana,Senegal,Ethiopia
                     help="Country to process (default: Kenya)")
 parser.add_argument("--satellite", type=str, default="imerg,chirps",
                     help="Satellite to process (default: imerg,chirps)")
-parser.add_argument("--agg", type=str, 
+parser.add_argument("--agg", type=str,
                     default="weekly,dekadal",
                     help="Aggregation period for plotting: 'dekadal' or 'weekly' (default: dekadal)")
+parser.add_argument("--time", type=str,
+                    default=datetime.now().date().strftime("%Y-%m-%d"), help="Time to run script for")
 args = parser.parse_args()
 
 if __name__ == "__main__":
-    now_dt = datetime.now().date()
-    live_time = now_dt.strftime("%Y-%m-%d")
 
     args = parser.parse_args()
     countries = args.country.split(',')
     aggs = args.agg.split(',')
     satellites = args.satellite.split(',')
+    live_time = args.time
+    now_dt = dateparser.parse(live_time).date()
 
     for country in countries:
         # Convert to xarray dataset
@@ -78,9 +81,10 @@ if __name__ == "__main__":
             except FileNotFoundError:
                 print(f"No data found for country {country}")
                 continue
-        
+
             sat_lag = pd.to_datetime(ds_sat.time.values[-1]).date() - now_dt
-            
+
+            missing_data = False
             for agg in aggs:
                 # Roll over decads
                 if agg == "dekadal":
@@ -147,7 +151,10 @@ if __name__ == "__main__":
                         )
                         ax_bottom.set_title(f"{satellite.upper()}: {times[i]}\nto {end_times[i]}", fontsize=9)
                     except (KeyError, AttributeError):
-                        ax_bottom.set_title(f"No {satellite.upper()} data: {times[i]}\nto {end_times[i]}", fontsize=9)
+                        # If there is no satellite data, break the loop and don't generate the plot
+                        #ax_bottom.set_title(f"No {satellite.upper()} data: {times[i]}\nto {end_times[i]}", fontsize=9)
+                        missing_data = True
+                        break
                     country_gdf.boundary.plot(edgecolor='grey', linewidth=1.0, ax=ax_bottom)
                     ax_bottom.set_xlabel("lon" if i == n_indices // 2 else "")
                     if i > 0:
@@ -155,6 +162,9 @@ if __name__ == "__main__":
                         ax_bottom.tick_params(left=False, labelleft=False)
                     else:
                         ax_bottom.set_ylabel("lat")
+
+                if missing_data:
+                    break
 
                 fig.colorbar(sc, ax=top_axes, label='TAHMO Precipitation (mm)', shrink=0.6, fraction=0.02, pad=0.02)
                 fig.colorbar(im, ax=bottom_axes, label=f'{satellite.upper()} Precipitation (mm)', shrink=0.6, fraction=0.02, pad=0.02)
@@ -167,6 +177,9 @@ if __name__ == "__main__":
                 fig = plt.figure(figsize=(14, 4))  # wider figure
                 gs = GridSpec(1, n_indices, figure=fig, wspace=0.08)
                 top_axes = [fig.add_subplot(gs[0, i]) for i in range(n_indices)]
+
+                if 'spatial_ref' in ds_sat_agg:
+                    ds_sat_agg = ds_sat_agg.drop_vars('spatial_ref')
 
                 for i, t_idx in enumerate(times):
                     ax = top_axes[i]

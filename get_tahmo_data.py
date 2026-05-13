@@ -1,6 +1,7 @@
 """Get all TAHMO stations in a specific country and download the data for the last 3 decades."""
 
-import datetime
+from datetime import datetime, timedelta
+from dateutil import parser as dateparser
 import os
 import pandas as pd
 import geopandas as gpd
@@ -14,6 +15,9 @@ if __name__ == "__main__":
         description="Download and process TAHMO data for a specific country.")
     parser.add_argument(
         "--country", type=str, default="Kenya,Ghana", help="Country code for stations to process (default: Kenya)"
+    )
+    parser.add_argument(
+        "--time", type=str, default=datetime.now().date().strftime("%Y-%m-%d"), help="Time to run script for"
     )
     country_to_code = {
         "Burkina Faso": "BF",
@@ -64,8 +68,8 @@ if __name__ == "__main__":
 
         station_data = []
         # Get data for the last 4 decads
-        now = datetime.datetime.now()
-        start_time = now - datetime.timedelta(days=60)
+        now = dateparser.parse(args.time)
+        start_time = now - timedelta(days=60)
         for i, station_id in enumerate(country_stations.station_id):
             try:
                 ds = tahmo_wide(start_time=start_time, end_time=now,
