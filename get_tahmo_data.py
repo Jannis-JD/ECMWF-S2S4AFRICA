@@ -57,7 +57,7 @@ if __name__ == "__main__":
             continue
 
         country_stations = stations[stations.location_countrycode == country_code][
-            ["code", "location_latitude", "location_longitude"]
+            ["code", "location_latitude", "location_longitude", "location_name"]
         ]
         country_stations = country_stations.rename(columns={"code": "station_id"})
         country_stations = country_stations[country_stations['station_id'].str.startswith(
@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
         # Reorder the columns to put the station metadata first
         order = ['time', 'station_id', 'location_latitude', 'location_longitude',
-                'country', 'admin_level_1',
+                'country', 'admin_level_1', 'location_name',
                 'cumulative_precipitation_mm', 'humidity_tahmo_mean', 'pressure_tahmo_mean',
                 'temperature_tahmo_mean', 'temperature_tahmo_max', 'temperature_tahmo_min',
                 'precipitation_sensor_id']
