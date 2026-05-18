@@ -1,5 +1,7 @@
 import os
 from datetime import datetime, timedelta
+from dateutil import parser as dateparser
+
 import argparse
 from sheerwater.data.imerg import imerg_raw_live
 from sheerwater.data.chirps import chirps_raw_live
@@ -14,12 +16,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--satellite", type=str, default="imerg,chirps", help="Satellite to process (default: imerg,chirps)"
     )
+    parser.add_argument(
+        "--time", type=str, default=datetime.now().date().strftime("%Y-%m-%d"), help="Time to run script for"
+    )
     args = parser.parse_args()
     countries = args.country.split(',')
     satellites = args.satellite.split(',')
-
-    now_dt = datetime.now().date()
-    live_time = now_dt.strftime("%Y-%m-%d")
+    live_time = args.time
+    now_dt = dateparser.parse(live_time).date()
 
     # Get the global IMERG data
     if "imerg" in satellites:

@@ -182,6 +182,7 @@ jobs:
           attachments: >
             plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/dekadal_precip.png, 
             plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_precip.png, 
+            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_precip_downscaled_clipped.png,             
             plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/imerg_Kenya_dekadal.png, 
             plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/imerg_Kenya_weekly.png, 
             plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/chirps_Kenya_dekadal.png, 
