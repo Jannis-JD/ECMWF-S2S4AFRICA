@@ -41,14 +41,14 @@ data_monthly.to_netcdf(f'{prefix}data/{date_str}/data_monthly.nc')
 dailyvars=gef.open_forecast(date_str,'CAPE_tcw_t2m_d2m_RH')
 Tminmax=gef.open_forecast(date_str,'Tminmax')
 wind10=gef.open_forecast(date_str,'10wind')
-wind500=gef.open_forecast(date_str,'500wind')
-wind700=gef.open_forecast(date_str,'700wind')
+# wind500=gef.open_forecast(date_str,'500wind')
+# wind700=gef.open_forecast(date_str,'700wind')
 
 week_dailyvars=gef.week_mean(dailyvars)
 week_6hTminmax=gef.week_mean(gef.day_mean_6h_accum(Tminmax,['mx2t6', 'mn2t6']))
 week_wind10=gef.week_mean(gef.day_mean(wind10))
-week_wind500=gef.week_mean(wind500.assign_coords(step=[stepp + 86400000000000 for stepp in wind500.step.values ])).rename({"isobaricInhPa":"level"})
-week_wind700=gef.week_mean(wind700.assign_coords(step=[stepp + 86400000000000 for stepp in wind500.step.values ])).rename({"isobaricInhPa":"level"})
+# week_wind500=gef.week_mean(wind500.assign_coords(step=[stepp + 86400000000000 for stepp in wind500.step.values ])).rename({"isobaricInhPa":"level"})
+# week_wind700=gef.week_mean(wind700.assign_coords(step=[stepp + 86400000000000 for stepp in wind500.step.values ])).rename({"isobaricInhPa":"level"})
 
 bboxes = {
     "Namibia": {"lat1": -15, "lon1": 10, "lat2": -31, "lon2": 27},
@@ -156,16 +156,16 @@ for country in bboxes.keys():
         ds_to_plot_var=ds_to_plot_var.sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
         gef.ensemble_plots(ds_to_plot=ds_to_plot_var,m_climate=mclim_var,var=var,save_path=save_path,country='Kenya',fontsize=fs,major_cities=major_cities)
         #------------winds 500hPa--------------------------------------------------------------------------------------------------------------------------------------------------------
-        mclim=gef.open_mclimate(week_wind500,var="700_500_wind_new").sel(level=500).sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
-        var='w'
-        save_path=f'{weekly_path}/w_500hPa/'
-        ds_to_plot_var=week_wind500.sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
+        # mclim=gef.open_mclimate(week_wind500,var="700_500_wind_new").sel(level=500).sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
+        # var='w'
+        # save_path=f'{weekly_path}/w_500hPa/'
+        # ds_to_plot_var=week_wind500.sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
 
-        gef.ensemble_plots(ds_to_plot=ds_to_plot_var,m_climate=mclim,var=var,save_path=save_path,country='Kenya',fontsize=fs,major_cities=major_cities)
+        # gef.ensemble_plots(ds_to_plot=ds_to_plot_var,m_climate=mclim,var=var,save_path=save_path,country='Kenya',fontsize=fs,major_cities=major_cities)
 
-        fig=gef.panel_plot_variable(ds_to_plot_var,variable=var,forecast_timestep=ds_to_plot_var.step.values,cmap='seismic',fontsize=fs)
-        plt.savefig(f'{save_path}/{var}.png',bbox_inches='tight')
-        plt.close()
+        # fig=gef.panel_plot_variable(ds_to_plot_var,variable=var,forecast_timestep=ds_to_plot_var.step.values,cmap='seismic',fontsize=fs)
+        # plt.savefig(f'{save_path}/{var}.png',bbox_inches='tight')
+        # plt.close()
 
         #----------winds 10m----------------------------------------------------------------------------------------------------------------------------------------------------------
         save_path=f'{weekly_path}/10m-wind/'
@@ -181,18 +181,18 @@ for country in bboxes.keys():
         plt.close()
 
         #----------winds 700hPa----------------------------------------------------------------------------------------------------------------------------------------------------------
-        save_path=f'{weekly_path}/700hpa-wind/'
+        # save_path=f'{weekly_path}/700hpa-wind/'
 
-        week_wind700_speed=gef.windspeed(week_wind700,'u','v').sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
+        # week_wind700_speed=gef.windspeed(week_wind700,'u','v').sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
 
-        mclim=gef.open_mclimate(week_wind700_speed,var="700_500_wind_new").sel(level=700).sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
-        mclim_speed=gef.windspeed(mclim,'u','v')
-        gef.ensemble_plots_quiver(week_wind700_speed,mclim_speed,'u','u','v',save_path,'Kenya',fs,major_cities)
-        gef.ensemble_plots_quiver(week_wind700_speed,mclim_speed,'v','u','v',save_path,'Kenya',fs,major_cities)
+        # mclim=gef.open_mclimate(week_wind700_speed,var="700_500_wind_new").sel(level=700).sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
+        # mclim_speed=gef.windspeed(mclim,'u','v')
+        # gef.ensemble_plots_quiver(week_wind700_speed,mclim_speed,'u','u','v',save_path,'Kenya',fs,major_cities)
+        # gef.ensemble_plots_quiver(week_wind700_speed,mclim_speed,'v','u','v',save_path,'Kenya',fs,major_cities)
 
-        fig=gef.quiver_plot_variable(week_wind700_speed,"u","v",week_wind700_speed["step"],cmap='YlGn')
-        plt.savefig(f'{save_path}/700hPa-wind_vectors.png',bbox_inches='tight')
-        plt.close()
+        # fig=gef.quiver_plot_variable(week_wind700_speed,"u","v",week_wind700_speed["step"],cmap='YlGn')
+        # plt.savefig(f'{save_path}/700hPa-wind_vectors.png',bbox_inches='tight')
+        # plt.close()
         #--------------temp-----------------------------------------------------------------------------------------------------------------------------------------------------
         vmaxt6h=gef.convert_to_celcius(week_6hTminmax,'mx2t6').mean('number').mx2t6.max()
         vmint6h=gef.convert_to_celcius(week_6hTminmax,'mn2t6').mean('number').mn2t6.min()
