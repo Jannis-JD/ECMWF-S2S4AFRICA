@@ -12,9 +12,7 @@ jobs:
   download:
     runs-on: ubuntu-latest
     env:
-      ECMWF_API_URL: ${{ secrets.ECMWF_API_URL }}
-      ECMWF_API_KEY: ${{ secrets.ECMWF_API_KEY }}
-      ECMWF_API_EMAIL: ${{ secrets.ECMWF_API_EMAIL }}
+      CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
       TAHMO_API_PASSWORD: ${{ secrets.TAHMO_API_PASSWORD }}
       TAHMO_API_USERNAME: ${{ secrets.TAHMO_API_USERNAME }}
       EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
