@@ -12,9 +12,11 @@ print(f"Downloading data for: {date_str}")
 
 path=f'data/{date_str}'
 os.makedirs(path, exist_ok=True)
+key=os.environ["CDSAPI_KEY"]
 
+print(key)
 client = cdsapi.Client(url="https://ecds.ecmwf.int/api", 
-key=os.environ["CDSAPI_KEY"])
+key=key)
 dataset = "s2s-forecasts"
 
 for ftype in ['perturbed_forecast','control_forecast']:
