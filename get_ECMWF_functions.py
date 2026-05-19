@@ -50,8 +50,8 @@ def windspeed(ds,u_name,v_name):
     return ds_speed
 
 def open_forecast(date_str,name):
-    pf_daily_var=xr.open_dataset(f"data/{date_str}/ECMWF_s2s_pf_{name}_forecast_42days_7N-32E-6S-43E.grib",engine='cfgrib')
-    cf_daily_var=xr.open_dataset(f"data/{date_str}/ECMWF_s2s_cf_{name}_forecast_42days_7N-32E-6S-43E.grib",engine='cfgrib')
+    pf_daily_var=xr.open_dataset(f"data/{date_str}/ECMWF_s2s_perturbed_forecast_{name}_42days_7N-32E-6S-43E.grib",engine='cfgrib')
+    cf_daily_var=xr.open_dataset(f"data/{date_str}/ECMWF_s2s_control_forecast_{name}_42days_7N-32E-6S-43E.grib",engine='cfgrib')
     return xr.concat([pf_daily_var,cf_daily_var],dim='number')
 
 def rank_upscale_and_align(
