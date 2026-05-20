@@ -31,16 +31,16 @@ for ftype in ['perturbed_forecast','control_forecast']:
         "data_format": "grib"
     }
 
-    if ftype=='control_forecast':
-        edit_request_precip={
-            "level_type": "single_level",
-            "variable": ["total_precipitation"], 
-            "leadtime_hour": ["0/to/1104/by/24"],
-            "area":[23,-20,-37,59],}
-        
-        target=f"{path}/ECMWF_s2s_{ftype}_precip_46days_23N-20W-37S-59E.grib"
-   
-        client.retrieve(dataset, base_request | edit_request_precip).download(target)
+    
+    edit_request_precip={
+        "level_type": "single_level",
+        "variable": ["total_precipitation"], 
+        "leadtime_hour": ["0/to/1104/by/24"],
+        "area":[23,-20,-37,59],}
+    
+    target=f"{path}/ECMWF_s2s_{ftype}_precip_46days_23N-20W-37S-59E.grib"
+
+    client.retrieve(dataset, base_request | edit_request_precip).download(target)
 
     base_request= base_request | {"area":[9,30,-6,45]}
 
