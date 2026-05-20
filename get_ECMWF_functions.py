@@ -1,5 +1,6 @@
 import time
 import os
+import glob
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -20,6 +21,8 @@ from IPython.display import clear_output
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
 import requests
+from cfgrib.xarray_to_grib import to_grib
+
 
 colors = ["white","wheat","lightgreen", "green","lightblue", "blue","yellow","orange", "red","purple"]
 cmap = LinearSegmentedColormap.from_list("wgbrp", colors)
@@ -50,9 +53,15 @@ def windspeed(ds,u_name,v_name):
     return ds_speed
 
 def open_forecast(date_str,name):
-    pf_daily_var=xr.open_dataset(f"data/{date_str}/ECMWF_s2s_perturbed_forecast_{name}_42days_7N-32E-6S-43E.grib",engine='cfgrib')
-    cf_daily_var=xr.open_dataset(f"data/{date_str}/ECMWF_s2s_control_forecast_{name}_42days_7N-32E-6S-43E.grib",engine='cfgrib')
-    return xr.concat([pf_daily_var,cf_daily_var],dim='number')
+    pf_path=glob.glob(f"*data/{date_str}/*perturbed_forecast_{name}*.grib")[0]
+    cf_path=glob.glob(f"*data/{date_str}/*control_forecast_{name}*.grib")[0]
+
+    pf_daily_var=xr.open_dataset(pf_path,engine='cfgrib')
+    cf_daily_var=xr.open_dataset(cf_path,engine='cfgrib')
+
+    ds=xr.concat([pf_daily_var,cf_daily_var],dim='number')
+
+    return ds
 
 def rank_upscale_and_align(
     source_da,
