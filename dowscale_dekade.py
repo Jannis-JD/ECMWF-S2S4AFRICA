@@ -83,6 +83,40 @@ try:
     fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap=cmap,fontsize=fs,vmax=int(ds_to_plot.quantile(0.99).tp.values))
     plt.savefig(f'plots/{country}/{date_str}/dekadal/dekadal_precip_downscaled.png',bbox_inches='tight')
 
+    anomaly=rescaled_forecast-chirps_dekades_ds.mean('rank')
+
+    anomaly.tp.attrs['units']='mm'
+    anomaly.tp.attrs['GRIB_name']='rainfall anomaly'
+
+    ds_to_plot=anomaly.sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2'])).transpose('latitude', 'longitude','step')
+
+    vmax=int(ds_to_plot.quantile(0.99).tp.values)
+    vmin=int(ds_to_plot.quantile(0.01).tp.values)
+    ranges=[np.abs(vmax),np.abs(vmin)]
+    limit_index=np.argmax(ranges)
+    vmax=ranges[limit_index]
+    vmin=-ranges[limit_index]
+
+    fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap='BrBG',fontsize=fs,vmax=vmax,vmin=vmin)
+        # plt.savefig(f'plots/{country}/{date_str}/weekly/weekly_precip_downscaled.png',bbox_inches='tight')
+
+    gdf = gpd.read_file("downscale_data/Kenya_Counties_KNSDI.shp").set_crs("EPSG:4326")
+
+    anomaly = anomaly.rio.write_crs("EPSG:4326")
+
+    # Reproject shapefile
+    gdf = gdf.to_crs(anomaly.rio.crs)
+
+    # Clip
+    ds_to_plot = anomaly.rio.clip(gdf.geometry, gdf.crs, drop=True).transpose('latitude', 'longitude','step')
+    vmax=int(ds_to_plot.quantile(0.99).tp.values)
+    vmin=int(ds_to_plot.quantile(0.01).tp.values)
+    ranges=[np.abs(vmax),np.abs(vmin)]
+    limit_index=np.argmax(ranges)
+    vmax=ranges[limit_index]
+    vmin=-ranges[limit_index]
+    fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap='BrBG',fontsize=fs,vmax=vmax,vmin=vmin)
+
     dirname=f'data/{date_str}/geotifs_kenya/'
     os.makedirs(dirname,exist_ok=True)
 
@@ -200,3 +234,39 @@ for country,upscale_factor in countries_to_downscale:
         ds_to_plot = rescaled_forecast.rio.clip(gdf.geometry, gdf.crs, drop=True).transpose('latitude', 'longitude','step')
         fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap=cmap,fontsize=fs,vmax=int(ds_to_plot.quantile(0.99).tp.values))
         plt.savefig(f'plots/{country}/{date_str}/weekly/weekly_precip_downscaled_clipped.png',bbox_inches='tight')
+
+        anomaly=rescaled_forecast-chirps_weeks_ds.mean('rank')
+
+        anomaly.tp.attrs['units']='mm'
+        anomaly.tp.attrs['GRIB_name']='rainfall anomaly'
+
+        ds_to_plot=anomaly.sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2'])).transpose('latitude', 'longitude','step')
+
+        vmax=int(ds_to_plot.quantile(0.99).tp.values)
+        vmin=int(ds_to_plot.quantile(0.01).tp.values)
+        ranges=[np.abs(vmax),np.abs(vmin)]
+        limit_index=np.argmax(ranges)
+        vmax=ranges[limit_index]
+        vmin=-ranges[limit_index]
+
+        fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap='BrBG',fontsize=fs,vmax=vmax,vmin=vmin)
+        plt.savefig(f'plots/{country}/{date_str}/weekly/weekly_precip_downscaled_anomaly.png',bbox_inches='tight')
+
+        gdf = gpd.read_file("downscale_data/Kenya_Counties_KNSDI.shp").set_crs("EPSG:4326")
+
+        anomaly = anomaly.rio.write_crs("EPSG:4326")
+
+        # Reproject shapefile
+        gdf = gdf.to_crs(anomaly.rio.crs)
+
+        # Clip
+        ds_to_plot = anomaly.rio.clip(gdf.geometry, gdf.crs, drop=True).transpose('latitude', 'longitude','step')
+        vmax=int(ds_to_plot.quantile(0.99).tp.values)
+        vmin=int(ds_to_plot.quantile(0.01).tp.values)
+        ranges=[np.abs(vmax),np.abs(vmin)]
+        limit_index=np.argmax(ranges)
+        vmax=ranges[limit_index]
+        vmin=-ranges[limit_index]
+        fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap='BrBG',fontsize=fs,vmax=vmax,vmin=vmin)
+        plt.savefig(f'plots/{country}/{date_str}/weekly/weekly_precip_downscaled_anomaly_clipped.png',bbox_inches='tight')
+
