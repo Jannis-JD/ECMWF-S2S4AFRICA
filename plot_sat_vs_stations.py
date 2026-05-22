@@ -6,7 +6,7 @@ from dateutil import parser as dateparser
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm
+from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm, ListedColormap
 
 import xarray as xr
 import pandas as pd
@@ -20,9 +20,9 @@ from sheerwater.spatial_subdivisions import polygon_subdivision_geodataframe
 # Use a grey color for zero value on the colorbar instead of white.
 colors = ["#bdbdbd", "wheat", "lightgreen", "green",
           "lightblue", "blue", "yellow", "orange", "red", "purple"]
-cmap = LinearSegmentedColormap.from_list("wgbrp", colors)
+cmap = ListedColormap(colors)
 bounds = [0, 10, 20, 40, 60, 80, 110, 150, 200, 250, 350]
-norm = BoundaryNorm(bounds, cmap.N)
+norm = BoundaryNorm(bounds, ncolors=len(colors), clip=True)
 
 parser = argparse.ArgumentParser(
     description="Plot satellite vs. station rainfall over a country")
@@ -41,6 +41,7 @@ args = parser.parse_args()
 def voronoi_bubbles(ax, lon, lat, values, cmap, norm, max_radius):
     points = np.column_stack([lon, lat])
     vor = Voronoi(points)
+
 
     for i, point in enumerate(points):
         region_idx = vor.point_region[i]
@@ -156,10 +157,11 @@ if __name__ == "__main__":
                     ax_top = top_axes[i]
                     try:
                         vals_tahmo = ds_agg.sel(time=t_idx).precip
+                        vals_tahmo = vals_tahmo.dropna(dim='station_id')
                         voronoi_bubbles(
                             ax_top,
-                            ds_agg.lon.values,
-                            ds_agg.lat.values,
+                            vals_tahmo.lon.values,
+                            vals_tahmo.lat.values,
                             vals_tahmo.values,
                             cmap,
                             norm,
