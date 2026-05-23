@@ -31,125 +31,129 @@ forecast_files = {
     (5, 11): ["ECMWF_tp_forecasts_05-11-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_14_Kenya.nc","May_Dekad2"],
     (5, 21): ["ECMWF_tp_forecasts_05-21-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_15_Kenya.nc","May_Dekad3"],
     (6, 1): ["ECMWF_tp_forecasts_06-01-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_16_Kenya.nc","June_Dekad1"],
-    (6, 11): ["ECMWF_tp_forecasts_06-11-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_17_Kenya.nc","June_Dekad2"]
+    (6, 11): ["ECMWF_tp_forecasts_06-11-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_17_Kenya.nc","June_Dekad2"],
+    (6, 21): ["ECMWF_tp_forecasts_06-21-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_18_Kenya.nc","June_Dekad3"],
+    (7, 1): ["ECMWF_tp_forecasts_07-01-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_19_Kenya.nc","July_Dekad1"],
+    (7, 11): ["ECMWF_tp_forecasts_07-11-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_20_Kenya.nc","July_Dekad2"],
+    (7, 21): ["ECMWF_tp_forecasts_07-21-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_sorted_21_Kenya.nc","July_Dekad3"]
 }
 
-try:
-    keys = list(forecast_files)
-    start = keys.index((month, day))
-    fclim_chirps = np.array([forecast_files[k] for k in keys[start:start+4]]).T
+#try:
+keys = list(forecast_files)
+start = keys.index((month, day))
+fclim_chirps = np.array([forecast_files[k] for k in keys[start:start+4]]).T
 
-    reforecast_clims=[]
-    for i,file in enumerate(fclim_chirps[0]):
-        fclim=xr.open_dataset('downscale_data/'+file)
-        reforecast_clims.append(fclim.assign_coords({'step':data_dekade.step.values[i]}))
-    reforecast_clims_ds=xr.concat(reforecast_clims,dim='step')
+reforecast_clims=[]
+for i,file in enumerate(fclim_chirps[0]):
+    fclim=xr.open_dataset('downscale_data/'+file)
+    reforecast_clims.append(fclim.assign_coords({'step':data_dekade.step.values[i]}))
+reforecast_clims_ds=xr.concat(reforecast_clims,dim='step')
 
-                            
-    chirps_dekades=[]
-    for i,file in enumerate(fclim_chirps[1]):
-        chirps=xr.open_dataset('downscale_data/'+file)
-        chirps_dekades.append(chirps.assign_coords({'step':data_dekade.step.values[i]}))
-    chirps_dekades_ds=xr.concat(chirps_dekades,dim='step')
+                        
+chirps_dekades=[]
+for i,file in enumerate(fclim_chirps[1]):
+    chirps=xr.open_dataset('downscale_data/'+file)
+    chirps_dekades.append(chirps.assign_coords({'step':data_dekade.step.values[i]}))
+chirps_dekades_ds=xr.concat(chirps_dekades,dim='step')
 
-    data_dekade=data_dekade.isel(step=slice(None,len(reforecast_clims_ds.step)))
+data_dekade=data_dekade.isel(step=slice(None,len(reforecast_clims_ds.step)))
 
-    bboxes = {
-        "Kenya": {"lat1": 7, "lon1": 33, "lat2": -6, "lon2": 42},
-        "kenya_plus":{"lat1": 7.5, "lon1":27, "lat2": -7.5, "lon2": 43}
-    }
+bboxes = {
+    "Kenya": {"lat1": 7, "lon1": 33, "lat2": -6, "lon2": 42},
+    "kenya_plus":{"lat1": 7.5, "lon1":27, "lat2": -7.5, "lon2": 43}
+}
 
-    country="kenya_plus"
-    data_to_add=data_dekade.assign_coords({"year":int(data_dekade.time.dt.year.values)}).mean('number').sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2']))
-    extended_fclim=xr.concat([reforecast_clims_ds,data_to_add],dim='year')
+country="kenya_plus"
+data_to_add=data_dekade.assign_coords({"year":int(data_dekade.time.dt.year.values)}).mean('number').sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2']))
+extended_fclim=xr.concat([reforecast_clims_ds,data_to_add],dim='year')
 
-    rescaled_forecast=gef.rank_upscale_and_align(extended_fclim.tp,chirps_dekades_ds.tp)
-    rescaled_forecast=rescaled_forecast.assign_coords({'time':extended_fclim.time,'valid_time':extended_fclim.valid_time}).to_dataset(name='tp')
-    rescaled_forecast.tp.attrs=data_dekade.tp.attrs
+rescaled_forecast=gef.rank_upscale_and_align(extended_fclim.tp,chirps_dekades_ds.tp)
+rescaled_forecast=rescaled_forecast.assign_coords({'time':extended_fclim.time,'valid_time':extended_fclim.valid_time}).to_dataset(name='tp')
+rescaled_forecast.tp.attrs=data_dekade.tp.attrs
 
-    rescaled_forecast.to_netcdf(f'data/{date_str}/data_dekade_downscaled.nc')
+rescaled_forecast.to_netcdf(f'data/{date_str}/data_dekade_downscaled.nc')
 
-    fs=12
-    country='Kenya'
+fs=12
+country='Kenya'
 
-    gef.lat1=bboxes[country]['lat1']
-    gef.lat2=bboxes[country]['lat2']
-    gef.lon1=bboxes[country]['lon1']
-    gef.lon2=bboxes[country]['lon2']
+gef.lat1=bboxes[country]['lat1']
+gef.lat2=bboxes[country]['lat2']
+gef.lon1=bboxes[country]['lon1']
+gef.lon2=bboxes[country]['lon2']
 
-    cmap=gef.cmap
+cmap=gef.cmap
 
-    ds_to_plot=rescaled_forecast.sortby('latitude',ascending=False).sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2'])).transpose('latitude', 'longitude','step')
-    fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap=cmap,fontsize=fs,vmax=int(ds_to_plot.quantile(0.99).tp.values))
-    plt.savefig(f'plots/{country}/{date_str}/dekadal/dekadal_precip_downscaled.png',bbox_inches='tight')
+ds_to_plot=rescaled_forecast.sortby('latitude',ascending=False).sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2'])).transpose('latitude', 'longitude','step')
+fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap=cmap,fontsize=fs,vmax=int(ds_to_plot.quantile(0.99).tp.values))
+plt.savefig(f'plots/{country}/{date_str}/dekadal/dekadal_precip_downscaled.png',bbox_inches='tight')
 
-    anomaly=rescaled_forecast-chirps_dekades_ds.mean('rank')
+# anomaly=rescaled_forecast-chirps_dekades_ds.mean('rank')
 
-    anomaly.tp.attrs['units']='mm'
-    anomaly.tp.attrs['GRIB_name']='rainfall anomaly'
+# anomaly.tp.attrs['units']='mm'
+# anomaly.tp.attrs['GRIB_name']='rainfall anomaly'
 
-    ds_to_plot=anomaly.sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2'])).transpose('latitude', 'longitude','step')
+# ds_to_plot=anomaly.sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2'])).transpose('latitude', 'longitude','step')
 
-    vmax=int(ds_to_plot.quantile(0.99).tp.values)
-    vmin=int(ds_to_plot.quantile(0.01).tp.values)
-    ranges=[np.abs(vmax),np.abs(vmin)]
-    limit_index=np.argmax(ranges)
-    vmax=ranges[limit_index]
-    vmin=-ranges[limit_index]
+# vmax=int(ds_to_plot.quantile(0.99).tp.values)
+# vmin=int(ds_to_plot.quantile(0.01).tp.values)
+# ranges=[np.abs(vmax),np.abs(vmin)]
+# limit_index=np.argmax(ranges)
+# vmax=ranges[limit_index]
+# vmin=-ranges[limit_index]
 
-    fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap='BrBG',fontsize=fs,vmax=vmax,vmin=vmin)
-        # plt.savefig(f'plots/{country}/{date_str}/weekly/weekly_precip_downscaled.png',bbox_inches='tight')
+# fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap='BrBG',fontsize=fs,vmax=vmax,vmin=vmin)
+#     # plt.savefig(f'plots/{country}/{date_str}/weekly/weekly_precip_downscaled.png',bbox_inches='tight')
 
-    gdf = gpd.read_file("downscale_data/Kenya_Counties_KNSDI.shp").set_crs("EPSG:4326")
+# gdf = gpd.read_file("downscale_data/Kenya_Counties_KNSDI.shp").set_crs("EPSG:4326")
 
-    anomaly = anomaly.rio.write_crs("EPSG:4326")
+# anomaly = anomaly.rio.write_crs("EPSG:4326")
 
-    # Reproject shapefile
-    gdf = gdf.to_crs(anomaly.rio.crs)
+# # Reproject shapefile
+# gdf = gdf.to_crs(anomaly.rio.crs)
 
-    # Clip
-    ds_to_plot = anomaly.rio.clip(gdf.geometry, gdf.crs, drop=True).transpose('latitude', 'longitude','step')
-    vmax=int(ds_to_plot.quantile(0.99).tp.values)
-    vmin=int(ds_to_plot.quantile(0.01).tp.values)
-    ranges=[np.abs(vmax),np.abs(vmin)]
-    limit_index=np.argmax(ranges)
-    vmax=ranges[limit_index]
-    vmin=-ranges[limit_index]
-    fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap='BrBG',fontsize=fs,vmax=vmax,vmin=vmin)
+# # Clip
+# ds_to_plot = anomaly.rio.clip(gdf.geometry, gdf.crs, drop=True).transpose('latitude', 'longitude','step')
+# vmax=int(ds_to_plot.quantile(0.99).tp.values)
+# vmin=int(ds_to_plot.quantile(0.01).tp.values)
+# ranges=[np.abs(vmax),np.abs(vmin)]
+# limit_index=np.argmax(ranges)
+# vmax=ranges[limit_index]
+# vmin=-ranges[limit_index]
+# fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap='BrBG',fontsize=fs,vmax=vmax,vmin=vmin)
 
-    dirname=f'data/{date_str}/geotifs_kenya/'
-    os.makedirs(dirname,exist_ok=True)
+dirname=f'data/{date_str}/geotifs_kenya/'
+os.makedirs(dirname,exist_ok=True)
 
-    for i,forecast_timestep in enumerate(data_dekade.step.values):
-        #get start and end time
-        if forecast_timestep == np.atleast_1d(data_dekade.step)[0]:
-            start_time=data_dekade.time
-            end_time=(data_dekade.time+forecast_timestep)
-        else:
-            dt=data_dekade.step[1]-data_dekade.step[0]
-            start_time=data_dekade.sel(step=forecast_timestep).valid_time-dt
-            end_time=data_dekade.sel(step=forecast_timestep).valid_time
-        fname=f'downscaled_rainfall_forecast_init_{str(data_dekade.time.values)[0:10]}_{fclim_chirps[2][i]}'
+for i,forecast_timestep in enumerate(data_dekade.step.values):
+    #get start and end time
+    if forecast_timestep == np.atleast_1d(data_dekade.step)[0]:
+        start_time=data_dekade.time
+        end_time=(data_dekade.time+forecast_timestep)
+    else:
+        dt=data_dekade.step[1]-data_dekade.step[0]
+        start_time=data_dekade.sel(step=forecast_timestep).valid_time-dt
+        end_time=data_dekade.sel(step=forecast_timestep).valid_time
+    fname=f'downscaled_rainfall_forecast_init_{str(data_dekade.time.values)[0:10]}_{fclim_chirps[2][i]}.tif'
 
-        to_save=ds_to_plot.isel(step=i)
-        to_save.rio.to_raster(dirname+fname)    
-        to_save.rio.write_crs("EPSG:4326", inplace=True)
-        to_save.tp.rio.to_raster(f"{dirname+fname}.bil", driver="EHdr")
+    to_save=ds_to_plot.isel(step=i)
+    to_save.rio.to_raster(dirname+fname)    
+    to_save.rio.write_crs("EPSG:4326", inplace=True)
+    to_save.tp.rio.to_raster(f"{dirname+fname}.bil", driver="EHdr")
 
-    gdf = gpd.read_file("downscale_data/Kenya_Counties_KNSDI.shp").set_crs("EPSG:4326")
+gdf = gpd.read_file("downscale_data/Kenya_Counties_KNSDI.shp").set_crs("EPSG:4326")
 
-    rescaled_forecast = rescaled_forecast.rio.write_crs("EPSG:4326")
+rescaled_forecast = rescaled_forecast.rio.write_crs("EPSG:4326")
 
-    # Reproject shapefile
-    gdf = gdf.to_crs(rescaled_forecast.rio.crs)
+# Reproject shapefile
+gdf = gdf.to_crs(rescaled_forecast.rio.crs)
 
-    # Clip
-    ds_to_plot = rescaled_forecast.rio.clip(gdf.geometry, gdf.crs, drop=True).transpose('latitude', 'longitude','step').sortby('latitude',ascending=False)
-    fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap=cmap,fontsize=fs,vmax=int(ds_to_plot.quantile(0.99).tp.values))
-    plt.savefig(f'plots/{country}/{date_str}/dekadal/dekadal_precip_downscaled_clipped.png',bbox_inches='tight')
-    
-except ValueError:
-    print('these are not the days you are looking for...')
+# Clip
+ds_to_plot = rescaled_forecast.rio.clip(gdf.geometry, gdf.crs, drop=True).transpose('latitude', 'longitude','step').sortby('latitude',ascending=False)
+fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap=cmap,fontsize=fs,vmax=int(ds_to_plot.quantile(0.99).tp.values))
+plt.savefig(f'plots/{country}/{date_str}/dekadal/dekadal_precip_downscaled_clipped.png',bbox_inches='tight')
+
+#except ValueError:
+#    print('these are not the days you are looking for...')
 
 bboxes = {
     "Kenya": {"lat1": 7, "lon1": 33, "lat2": -6, "lon2": 42},
