@@ -1,4 +1,3 @@
-ecmwf-api-client
 numpy
 xarray
 matplotlib
@@ -13,3 +12,4 @@ rioxarray
 ipython
 requests
 cdsapi
+ecmwf-opendata

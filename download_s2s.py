@@ -1,6 +1,8 @@
 import cdsapi
 from datetime import datetime, timedelta
 import os
+from ecmwf.opendata import Client
+
 
 # ---------------------------
 # Compute the date two days earlier
@@ -10,11 +12,9 @@ two_days_earlier = today - timedelta(days=2)
 date_str = two_days_earlier.strftime("%Y-%m-%d")
 print(f"Downloading data for: {date_str}")
 
-path=f'data/{date_str}'
+path=f'data/{date_str}/'
 os.makedirs(path, exist_ok=True)
 key=os.environ["CDSAPI_KEY"]
-
-print("test:",key)
 
 client = cdsapi.Client(url="https://ecds.ecmwf.int/api", 
 key=key)
@@ -103,3 +103,20 @@ for ftype in ['perturbed_forecast','control_forecast']:
     target= f"{path}/ECMWF_s2s_{ftype}_500wind_42days_7N-32E-6S-43E.grib"
 
     client.retrieve(dataset, base_request | edit_request_500wind_vars).download(target)
+
+#download medium range precip
+client = Client("ecmwf", beta=False)
+
+for ftype in ['pf','cf']:
+    filename = f'{path}/medium-tp-{date_str}-mean-{ftype}.grib'
+
+    client.retrieve(
+        date=date_str,
+        time=0,
+        step=[0,168,336],
+        stream="enfo",
+        type=ftype,
+        levtype="sfc",
+        param=['tp'],
+        target=filename,
+    )
