@@ -52,9 +52,12 @@ def windspeed(ds,u_name,v_name):
     ds_speed.speed.attrs['GRIB_name']='wind speed'
     return ds_speed
 
-def open_forecast(date_str,name):
-    pf_path=glob.glob(f"*data/{date_str}/*perturbed_forecast_{name}*.grib")[0]
-    cf_path=glob.glob(f"*data/{date_str}/*control_forecast_{name}*.grib")[0]
+
+def open_forecast(date_str,name,path=None):
+    if path==None:
+        path=f'*data/{date_str}'
+    pf_path=glob.glob(f"{path}/*perturbed_forecast_{name}*.grib")[0]
+    cf_path=glob.glob(f"{path}/*control_forecast_{name}*.grib")[0]
 
     pf_daily_var=xr.open_dataset(pf_path,engine='cfgrib')
     cf_daily_var=xr.open_dataset(cf_path,engine='cfgrib')
