@@ -28,15 +28,15 @@ for ftype in ['perturbed_forecast','control_forecast']:
         "day": date_str[8:],
         "forecast_type": ftype,
         "time": "00:00",
-        "data_format": "grib"
+        "data_format": "grib",
     }
-
     
     edit_request_precip={
         "level_type": "single_level",
         "variable": ["total_precipitation"], 
         "leadtime_hour": ["0/to/1104/by/24"],
-        "area":[23,-20,-37,59],}
+        "area":[23,-20,-37,59],
+        }
     
     target=f"{path}/ECMWF_s2s_{ftype}_precip_46days_23N-20W-37S-59E.grib"
 
@@ -107,16 +107,27 @@ for ftype in ['perturbed_forecast','control_forecast']:
 #download medium range precip
 client = Client("ecmwf", beta=False)
 
-for ftype in ['pf','cf']:
-    filename = f'{path}/medium-tp-{date_str}-mean-{ftype}.grib'
+filename1 = f'{path}/medium-tp-{date_str}-mean-pf.grib'
+filename2 = f'{path}/medium-tp-{date_str}-mean-cf.grib'
 
-    client.retrieve(
-        date=date_str,
-        time=0,
-        step=[0,168,336],
-        stream="enfo",
-        type=ftype,
-        levtype="sfc",
-        param=['tp'],
-        target=filename,
-    )
+client.retrieve(
+    date=date_str,
+    time=0,
+    step=[0,168,336],
+    stream="enfo",
+    type="pf",
+    levtype="sfc",
+    param=['tp'],
+    target=filename1,
+)
+
+client.retrieve(
+    date=date_str,
+    time=0,
+    step=[0,168,336],
+    stream="oper",
+    type="fc",
+    levtype="sfc",
+    param=['tp'],
+    target=filename2
+)

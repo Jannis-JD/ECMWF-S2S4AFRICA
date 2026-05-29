@@ -45,11 +45,12 @@ efi,sot = efi_sot.EFI_SOT(data_weekly, m_climate_big)
 
 #-----precip medium range---------------------------------------------------------------------------------------#
 
-data_medium_pf=xr.open_dataset(f"{prefix}data/{date_str}/medium-tp-{date_str}-mean-pf.grib",engine='cfgrib',decode_timedelta=True)
-data_medium_cf=xr.open_dataset(f"{prefix}data/{date_str}/medium-tp-{date_str}-mean-cf.grib",engine='cfgrib',decode_timedelta=True).assign_coords({'number':0})
+data_medium_pf=xr.open_dataset(f"{prefix}data/{date_str}/medium-tp-{date_str}-mean-pf.grib",engine='cfgrib')
+data_medium_cf=xr.open_dataset(f"{prefix}data/{date_str}/medium-tp-{date_str}-mean-cf.grib",engine='cfgrib').assign_coords({'number':0})
 data_medium=xr.concat([data_medium_pf,data_medium_cf],dim='number')
 data_weekly_medium=data_medium.diff('step')*1000
-data_weekly_medium.tp.attrs=data.tp.attrs
+data_weekly_medium.tp.attrs=data_medium_pf.tp.attrs
+data_weekly_medium.tp.attrs['units']='mm'
 
 # #----other vars-----------------------------------------------------------------------------------------#
 dailyvars=gef.open_forecast(date_str,'CAPE_tcw_t2m_d2m_RH')
