@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 import os
 from ecmwf.opendata import Client
 
-
 # ---------------------------
 # Compute the date two days earlier
 # ---------------------------

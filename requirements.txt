@@ -1,3 +1,4 @@
+ecmwf-api-client
 numpy
 xarray
 matplotlib

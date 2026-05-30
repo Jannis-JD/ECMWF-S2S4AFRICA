@@ -43,6 +43,10 @@ m_climate_big = gef.open_mclimate(data_weekly)
 
 efi,sot = efi_sot.EFI_SOT(data_weekly, m_climate_big)
 
+data_weekly_cut_to_mclimate=data_weekly.sel(longitude=slice(m_climate_big.longitude.min(),m_climate_big.longitude.max()),latitude=slice(m_climate_big.latitude.max(),m_climate_big.latitude.min()))
+chances_to_exceed,anom_clims,tercile_clims=gef.ensemble_data(data_weekly_cut_to_mclimate,m_climate_big,'tp',quantiles=[90,75,50,25,10])
+
+
 #-----precip medium range---------------------------------------------------------------------------------------#
 
 data_medium_pf=xr.open_dataset(f"{prefix}data/{date_str}/medium-tp-{date_str}-mean-pf.grib",engine='cfgrib')
@@ -68,8 +72,8 @@ week_wind700=gef.week_mean(wind700.assign_coords(step=[stepp + 86400000000000 fo
 #----plotting-----------------------------------------------------------------------------------------#
 
 bboxes = {
-    "Namibia": {"lat1": -15, "lon1": 10, "lat2": -31, "lon2": 27},
-    "Botswana": {"lat1": -15, "lon1": 18, "lat2": -28, "lon2": 31},
+    # "Namibia": {"lat1": -15, "lon1": 10, "lat2": -31, "lon2": 27},
+    # "Botswana": {"lat1": -15, "lon1": 18, "lat2": -28, "lon2": 31},
     "Kenya": {"lat1": 7, "lon1": 32, "lat2": -6, "lon2": 43},
     "Zambia": {"lat1": -6, "lon1": 20, "lat2": -20, "lon2": 35},
     "Madagascar": {"lat1": -10, "lon1": 42, "lat2": -27, "lon2": 52},
@@ -170,21 +174,21 @@ for country in bboxes.keys():
                 mclim_var=mclim
 
             ds_to_plot_var=ds_to_plot_var.sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
-            gef.ensemble_plots(ds_to_plot=ds_to_plot_var,m_climate=mclim_var,var=var,save_path=save_path,country='Kenya',fontsize=fs,major_cities=major_cities)
+            chances_to_exceed_var,anom_clims_var,tercile_clims_var=gef.ensemble_data(ds_to_plot_var,mclim,var,quantiles=[75,50,25])
+            gef.ensemble_plots(ds_to_plot_var,mclim,chances_to_exceed_var,anom_clims_var,tercile_clims_var,var,save_path,country=country,fontsize=fs,major_cities=major_cities)
 
             fig=gef.panel_plot_variable(ds_to_plot_var,variable=var,forecast_timestep=ds_to_plot_var.step.values,cmap=cmaps[i],fontsize=fs)
             plt.savefig(f'{save_path}/{var}.png',bbox_inches='tight')
             plt.close()
-
-        ds_to_plot_var=ds_to_plot_var.sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
-        gef.ensemble_plots(ds_to_plot=ds_to_plot_var,m_climate=mclim_var,var=var,save_path=save_path,country='Kenya',fontsize=fs,major_cities=major_cities)
         # ------------winds 500hPa--------------------------------------------------------------------------------------------------------------------------------------------------------
+       
         mclim=gef.open_mclimate(week_wind500,var="700_500_wind_new").sel(level=500).sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
         var='w'
         save_path=f'{weekly_path}/w_500hPa/'
         ds_to_plot_var=week_wind500.sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
 
-        gef.ensemble_plots(ds_to_plot=ds_to_plot_var,m_climate=mclim,var=var,save_path=save_path,country='Kenya',fontsize=fs,major_cities=major_cities)
+        chances_to_exceed_w500,anom_clims_w500,tercile_clims_w500=gef.ensemble_data(ds_to_plot_var,mclim,var,quantiles=[90,75,50,25,10])
+        gef.ensemble_plots(ds_to_plot_var,mclim,chances_to_exceed_w500,anom_clims_w500,tercile_clims_w500,var,save_path,country=country,fontsize=fs,major_cities=major_cities)
 
         fig=gef.panel_plot_variable(ds_to_plot_var,variable=var,forecast_timestep=ds_to_plot_var.step.values,cmap='seismic',fontsize=fs)
         plt.savefig(f'{save_path}/{var}.png',bbox_inches='tight')
@@ -239,4 +243,4 @@ for country in bboxes.keys():
         plt.savefig(f'{weekly_path}/efi_sot_precip.png',bbox_inches='tight')
         plt.close()
 
-        gef.ensemble_plots(ds_to_plot,m_climate,'tp',weekly_path,country=country,fontsize=fs,major_cities=major_cities)
+        gef.ensemble_plots(ds_to_plot,m_climate,chances_to_exceed,anom_clims,tercile_clims,'tp',weekly_path,country=country,fontsize=fs,major_cities=major_cities)

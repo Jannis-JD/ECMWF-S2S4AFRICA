@@ -22,7 +22,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import subprocess
 import requests
 from cfgrib.xarray_to_grib import to_grib
-
+import matplotlib.colors as mcolors
 
 colors = ["white","wheat","lightgreen", "green","lightblue", "blue","yellow","orange", "red","purple"]
 cmap = LinearSegmentedColormap.from_list("wgbrp", colors)
@@ -51,7 +51,6 @@ def windspeed(ds,u_name,v_name):
     ds_speed['speed'].attrs=ds[wind].attrs
     ds_speed.speed.attrs['GRIB_name']='wind speed'
     return ds_speed
-
 
 def open_forecast(date_str,name,path=None):
     if path==None:
@@ -191,7 +190,6 @@ def rank_upscale_and_align(
     sorted_target = target_da.isel(rank=smoothed.isel(year=-1).clip(min=None,max=len(target_da['rank'])-1))
 
     return sorted_target.T
-
 
 def link_ECMWF_key(api_config):
     # Get the current working directory
@@ -389,8 +387,7 @@ def day_mean_6h_accum(temp_data,variable):
 
     elif has_min:
         return temp_day_min.mn2t6.to_dataset()
-
-        
+  
 def week_mean(ds):
     #"calculate weekly mean"
     if int(len(np.atleast_1d(ds.step.values))/7)<1:
@@ -977,7 +974,7 @@ def make_windroses(ensemble_mean,lat,lon,num_partitions,num_steps):
 cities = {
 }
 
-def plot_variable(ds,variable,forecast_timestep,vmax,vmin,cmap,cities=cities,ax='None',add_contour=None,contourlevels=None,contourcmap=None,contourwidths=None,fontsize=16):
+def plot_variable(ds,variable,forecast_timestep,vmax,vmin,cmap,cities=cities,ax='None',add_contour=None,contourlevels=None,contourcmap=None,contourwidths=None,fontsize=16,norm=None):
     '''
     function to plot a variable from the ECMWF forecast with the option of adding another variable as contour
 
@@ -1003,7 +1000,7 @@ def plot_variable(ds,variable,forecast_timestep,vmax,vmin,cmap,cities=cities,ax=
     ds = ds.sel(step=forecast_timestep)
 
     #plot
-    contour = ax.pcolormesh(ds.longitude, ds.latitude, ds[variable], cmap=cmap,vmax=vmax,vmin=vmin) 
+    contour = ax.pcolormesh(ds.longitude, ds.latitude, ds[variable], cmap=cmap,vmax=vmax,vmin=vmin,norm=norm) 
 
     if isinstance(add_contour, (xr.DataArray, xr.Dataset)):
         add_contour=lon_convert(add_contour)
@@ -1042,7 +1039,7 @@ def plot_variable(ds,variable,forecast_timestep,vmax,vmin,cmap,cities=cities,ax=
              
     return contour,lines
 
-def panel_plot_variable(ds,variable,forecast_timestep,cmap,cities=cities,vmax=None,vmin=None,units=None,change=False,add_contour=None,contourlevels=None,contourcmap=None,contourwidths=None,fontsize=16,level=None):
+def panel_plot_variable(ds,variable,forecast_timestep,cmap,cities=cities,vmax=None,vmin=None,units=None,change=False,add_contour=None,contourlevels=None,contourcmap=None,contourwidths=None,fontsize=16,level=None,norm=None):
     ds=ds.sel(longitude=slice(lon1,lon2),latitude=slice(lat1,lat2))
     if level is not None:
         ds = ds.sel(level=level)
@@ -1067,16 +1064,20 @@ def panel_plot_variable(ds,variable,forecast_timestep,cmap,cities=cities,vmax=No
     
     #define vmax and vmin to ensure plots have same color scale
     if units==None:
-        units=ds[variable].units
-    if vmax==None:
-        vmax=np.nanmax(ds[variable].sel(step=forecast_timestep).values)
-    if vmin==None:
-        vmin=np.nanmin(ds[variable].sel(step=forecast_timestep).values)
-    if vmax>0 and vmin<0:
-        ranges=[np.abs(vmax),np.abs(vmin)]
-        limit_index=np.argmax(ranges)
-        vmax=ranges[limit_index]
-        vmin=-ranges[limit_index]
+            units=ds[variable].units
+    if norm==None:
+        if vmax==None:
+            vmax=np.nanmax(ds[variable].sel(step=forecast_timestep).values)
+        if vmin==None:
+            vmin=np.nanmin(ds[variable].sel(step=forecast_timestep).values)
+        if vmax>0 and vmin<0:
+            ranges=[np.abs(vmax),np.abs(vmin)]
+            limit_index=np.argmax(ranges)
+            vmax=ranges[limit_index]
+            vmin=-ranges[limit_index]
+    else:
+        vmax=None
+        vmin=None
             
     #logic to check if there is only one forcast step or if there are more
     steps = np.atleast_1d(forecast_timestep)  # Converts single value to an array
@@ -1101,7 +1102,7 @@ def panel_plot_variable(ds,variable,forecast_timestep,cmap,cities=cities,vmax=No
     
     for i, s in enumerate(np.atleast_1d(forecast_timestep)):
         ax = axes[i]
-        contour,lines=plot_variable(ds,variable,s,vmax,vmin,cities=cities,cmap=cmap,ax=ax,add_contour=add_contour,contourlevels=contourlevels,contourcmap=contourcmap,contourwidths=contourwidths,fontsize=fontsize)
+        contour,lines=plot_variable(ds,variable,s,vmax,vmin,cities=cities,cmap=cmap,ax=ax,add_contour=add_contour,contourlevels=contourlevels,contourcmap=contourcmap,contourwidths=contourwidths,fontsize=fontsize,norm=norm)
     for j in range(num_steps, len(axes)):
         axes[j].set_visible(False) #delete extra empty plots
     fig.tight_layout() 
@@ -1313,7 +1314,7 @@ def chance_to_exceed_mclimate(ds,quantile,m_climate,var='tp'):
         chance=comparison.sum(dim='number')/ ds.sizes['number']*100
         hold.append(chance)
         
-    chance_to_exceed=xr.concat(hold,dim='step')
+    chance_to_exceed=xr.concat(hold,dim='step',coords='different',compat='equals')
     chance_to_exceed.attrs=ds[var].attrs
     chance_to_exceed.attrs['units']='%'
     chance_to_exceed.attrs['GRIB_name']='chance to exceed climatology'
@@ -1330,7 +1331,7 @@ def anomaly_from_mclimate(ds,quantile,m_climate,var='tp'):
         difference = ensemble_mean(ds[var].sel(step=forecast_timestep))-m_climate_interp[var]
         hold.append(difference)
         
-    anom_clim=xr.concat(hold,dim='step')
+    anom_clim=xr.concat(hold,dim='step',coords='different',compat='equals')
     anom_clim.attrs=ds[var].attrs
     anom_clim.attrs['GRIB_name']='Anomaly from climatology'
     anom_clim.attrs['units']=units
@@ -1366,7 +1367,7 @@ def tercile_from_mclimate(ds,category_choice,m_climate,var='tp'):
     
         hold.append(ensemble_counts)
         
-    tercile_clim=xr.concat(hold,dim='step')
+    tercile_clim=xr.concat(hold,dim='step',coords='different',compat='equals')
     tercile_clim=tercile_clim.to_dataset().sel(category=category_choice)
     
     tercile_clim.attrs=ds[var].attrs
@@ -1479,12 +1480,45 @@ def meteogram_double(ds,m_climate,lat,lon,cityname,var='tp'):
     ax.legend()
     return ax
 
-def ensemble_plots(ds_to_plot,m_climate,var,save_path,country,fontsize,major_cities,quantiles=[75,50,25]):
-    os.makedirs(save_path, exist_ok=True)
+def ensemble_data(ds_to_plot,m_climate,var,quantiles=[75,50,25]):
+    chances_to_exceed=[]
+    anom_clims=[]
+    tercile_clims=[]
     for quantile in quantiles:
-        chance_to_exceed=chance_to_exceed_mclimate(ds_to_plot,quantile=quantile,m_climate=m_climate,var=var)
-        panel_plot_variable(chance_to_exceed,var,chance_to_exceed.step.values,cmap='Blues',fontsize=fontsize)
-        plt.savefig(f'{save_path}/{quantile}th_percentile_exedance_precip.png',bbox_inches='tight')
+        chances_to_exceed.append(chance_to_exceed_mclimate(ds_to_plot,quantile=quantile,m_climate=m_climate,var=var).assign_coords({'quantile':quantile}))          
+        anom_clims.append(anomaly_from_mclimate(ds_to_plot,quantile=quantile,m_climate=m_climate,var=var).assign_coords({'quantile':quantile}))
+    
+    tercil_cats=['below-normal','above-normal']
+    
+    for cat in tercil_cats:
+        tercile_clims.append(tercile_from_mclimate(ds_to_plot,category_choice=cat,m_climate=m_climate,var=var).assign_coords({'cat':cat})) 
+    # return chances_to_exceed,anom_clims,tercile_clims
+
+    return xr.concat(chances_to_exceed,dim='quantile',coords='different',compat='equals'),xr.concat(anom_clims,dim='quantile',coords='different',compat='equals'),xr.concat(tercile_clims,dim='cat',coords='different',compat='equals')
+
+bounds = [0,1, 10, 25, 45,55, 75, 90,99, 100]
+colors = [
+    'purple',  # 0%   — deep blue (very unlikely to exceed)
+    '#08306b',  # 0%   — deep blue (very unlikely to exceed)
+    '#2171b5',  # 10%  — medium blue
+    '#6baed6',  # 25%  — light blue
+    'lightgreen',  # 50%  — neutral yellow (50/50)
+    'yellow',
+    '#fd8d3c',  # 75%  — light orange
+    '#d7301f',  # 90%  — medium red
+    '#7f0000',  # 100% — deep red (certain exceedance)
+]
+
+anom_cmap = mcolors.ListedColormap(colors)
+norm = mcolors.BoundaryNorm(bounds, anom_cmap.N)
+
+def ensemble_plots(ds_to_plot,m_climate,chances_to_exceed,anom_clims,tercile_clims,var,save_path,country,fontsize,major_cities,quantiles=[75,50,25]):
+    os.makedirs(save_path, exist_ok=True)
+
+    for quantile in quantiles:
+        chance_to_exceed=chances_to_exceed.sel(quantile=quantile).sel(longitude=slice(lon1, lon2),latitude=slice(lat1,lat2))
+        fig=panel_plot_variable(chance_to_exceed,var,chance_to_exceed.step.values,fontsize=fontsize,cmap=anom_cmap,norm=norm)
+        plt.savefig(f'{save_path}/{quantile}th_percentile_exedance.png',bbox_inches='tight')
         plt.close()
 
         if 'temperature' in ds_to_plot[var].long_name and 'dew' not in ds_to_plot[var].long_name:
@@ -1492,7 +1526,8 @@ def ensemble_plots(ds_to_plot,m_climate,var,save_path,country,fontsize,major_cit
         else:
             cmap='RdBu'
             
-        anom_clim=anomaly_from_mclimate(ds_to_plot,quantile=quantile,m_climate=m_climate,var=var)
+        anom_clim=anom_clims.sel(quantile=quantile).sel(longitude=slice(lon1, lon2),latitude=slice(lat1,lat2))
+
         if float(anom_clim[var].min().values)>0:
             vmin=-float(anom_clim[var].max().values)
         else:
@@ -1506,13 +1541,12 @@ def ensemble_plots(ds_to_plot,m_climate,var,save_path,country,fontsize,major_cit
         plt.savefig(f'{save_path}/anomaly_from_{quantile}th.png',bbox_inches='tight')
         plt.close()
 
-    tercil_cats=['near-normal','below-normal','above-normal']
-    
-    for cat in tercil_cats:
-        tercile_clim=tercile_from_mclimate(ds_to_plot,category_choice=cat,m_climate=m_climate,var=var)
-        panel_plot_variable(tercile_clim,var,tercile_clim.step.values,cmap='rainbow',fontsize=fontsize)
-        plt.savefig(f'{save_path}/chance_of_{cat}.png',bbox_inches='tight')
-        plt.close()
+    tercile_clims=tercile_clims.sel(longitude=slice(lon1, lon2),latitude=slice(lat1,lat2))
+    Below_or_above=tercile_clims.sel(cat='above-normal')-tercile_clims.sel(cat='below-normal')
+    Below_or_above[var].attrs={'GRIB_name': '       <---Below normal   or  Above normal--->', 'units': '%'}
+    fig=panel_plot_variable(Below_or_above,var,Below_or_above.step.values,cmap='BrBG',fontsize=13,vmax=100,vmin=-100)
+    plt.savefig(f'{save_path}/chance_of_above_or_below.png',bbox_inches='tight')
+    plt.close()
     
     for i in range(2):
         latf,lonf=major_cities[country][i][0],major_cities[country][i][1]
@@ -1520,11 +1554,13 @@ def ensemble_plots(ds_to_plot,m_climate,var,save_path,country,fontsize,major_cit
         plt.savefig(f'{save_path}/meteogram_{major_cities[country][2][i]}.png',bbox_inches='tight')
         plt.close()
 
+    return fig
+
 def ensemble_plots_quiver(ds_to_plot,m_climate,var,u_name,v_name,save_path,country,fontsize,major_cities,quantiles=[75,50,25]):
     os.makedirs(save_path, exist_ok=True)
     for quantile in quantiles:
         chance_to_exceed=chance_to_exceed_mclimate(ds_to_plot,quantile=quantile,m_climate=m_climate,var=var)
-        panel_plot_variable(chance_to_exceed,var,chance_to_exceed.step.values,cmap='Blues',fontsize=fontsize)
+        panel_plot_variable(chance_to_exceed,var,chance_to_exceed.step.values,cmap=anom_cmap,norm=norm,fontsize=fontsize)
         plt.savefig(f'{save_path}/{quantile}th_percentile_exedance_{var}.png',bbox_inches='tight')
         plt.close()
 
