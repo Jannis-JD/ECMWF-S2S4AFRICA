@@ -174,7 +174,7 @@ for country in bboxes.keys():
                 mclim_var=mclim
 
             ds_to_plot_var=ds_to_plot_var.sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
-            chances_to_exceed_var,anom_clims_var,tercile_clims_var=gef.ensemble_data(ds_to_plot_var,mclim,var,quantiles=[75,50,25])
+            chances_to_exceed_var,anom_clims_var,tercile_clims_var=gef.ensemble_data(ds_to_plot_var,mclim_var,var,quantiles=[75,50,25])
             gef.ensemble_plots(ds_to_plot_var,mclim,chances_to_exceed_var,anom_clims_var,tercile_clims_var,var,save_path,country=country,fontsize=fs,major_cities=major_cities)
 
             fig=gef.panel_plot_variable(ds_to_plot_var,variable=var,forecast_timestep=ds_to_plot_var.step.values,cmap=cmaps[i],fontsize=fs)
@@ -187,7 +187,7 @@ for country in bboxes.keys():
         save_path=f'{weekly_path}/w_500hPa/'
         ds_to_plot_var=week_wind500.sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
 
-        chances_to_exceed_w500,anom_clims_w500,tercile_clims_w500=gef.ensemble_data(ds_to_plot_var,mclim,var,quantiles=[90,75,50,25,10])
+        chances_to_exceed_w500,anom_clims_w500,tercile_clims_w500=gef.ensemble_data(ds_to_plot_var,mclim,var,quantiles=[75,50,25])
         gef.ensemble_plots(ds_to_plot_var,mclim,chances_to_exceed_w500,anom_clims_w500,tercile_clims_w500,var,save_path,country=country,fontsize=fs,major_cities=major_cities)
 
         fig=gef.panel_plot_variable(ds_to_plot_var,variable=var,forecast_timestep=ds_to_plot_var.step.values,cmap='seismic',fontsize=fs)
