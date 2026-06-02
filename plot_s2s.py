@@ -180,7 +180,7 @@ for country in bboxes.keys():
             gef.ensemble_plots(ds_to_plot_var,mclim,ensemble_stats_var[0],ensemble_stats_var[1],ensemble_stats_var[2],var,save_path,country=country,fontsize=fs,major_cities=major_cities)
 
             fig=gef.panel_plot_variable(ds_to_plot_var,variable=var,forecast_timestep=ds_to_plot_var.step.values,cmap=cmaps[i],fontsize=fs)
-            #plt.savefig(f'{save_path}/{var}.png',bbox_inches='tight')
+            plt.savefig(f'{save_path}/{var}.png',bbox_inches='tight')
             plt.close()
 
         # ------------winds 500hPa--------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -249,9 +249,12 @@ for country in bboxes.keys():
         plt.close()
 
         gef.ensemble_plots(ds_to_plot,m_climate,ensemble_stats_tp[0],ensemble_stats_tp[1],ensemble_stats_tp[2],'tp',weekly_path,country=country,fontsize=fs,major_cities=major_cities)
+        
         weekly_temp_path=f'{weekly_path}/t2m/'
         ds_to_plot_temp=gef.convert_to_celcius(week_dailyvars,'t2m')
+
         gef.ensemble_plots(ds_to_plot_temp,mclim_celcius,ensemble_stats_t2m[0],ensemble_stats_t2m[1],ensemble_stats_t2m[2],'t2m',weekly_temp_path,country=country,fontsize=fs,major_cities=major_cities)
+
         fig=gef.panel_plot_variable(ds_to_plot_temp,variable='t2m',forecast_timestep=ds_to_plot_temp.step.values,cmap='rainbow',fontsize=fs)
         plt.savefig(f'{save_path}/{var}.png',bbox_inches='tight')
         plt.close()
