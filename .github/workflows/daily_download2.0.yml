@@ -12,6 +12,10 @@ jobs:
   download:
     runs-on: ubuntu-latest
     env:
+      DATA_BRANCH: automatic-JSON-creation
+      WEBSITE_BRANCH: website
+      DATA_DIR: website_data       # root folder on main branch
+      OUTPUT_DIR: ncdf_data             # output folder on website branch
       CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
       TAHMO_API_PASSWORD: ${{ secrets.TAHMO_API_PASSWORD }}
       TAHMO_API_USERNAME: ${{ secrets.TAHMO_API_USERNAME }}
@@ -20,7 +24,16 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          ref: automatic-JSON-creation
+          path: main_repo
+
+      - name: Check out website branch
+        uses: actions/checkout@v4
+        with:
+          ref: website
+          path: website_branch
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -29,42 +42,70 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install -r main_repo/requirements.txt
 
       - name: Run download script
         continue-on-error: true
+        working-directory: main_repo
         run: |
           python download_s2s.py
 
       - name: Generate plots
         continue-on-error: true
         run: |
-          python plot_s2s.py
+          python main_repo/plot_s2s.py
+        env:
+          MAIN_PATH: ${{ github.workspace }}/main_repo/
+          WEBSITE_PATH: ${{ github.workspace }}/website_branch/
 
       - name: perform downscaling
         continue-on-error: true
+        working-directory: main_repo
         run: |
           python dowscale_dekade.py
 
       - name: Save generated files in repo
-        continue-on-error: true
+        continue-on-error: false
         run: |
+          cd main_repo
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add plots/
-          git add data/
-          git commit -m "Daily automated update" || echo "No changes to commit"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }}
 
-      
+          git add .
+
+          git status
+
+          git diff --cached --stat
+
+          git diff --cached --quiet || git commit -m "Daily automated update"
+
+          git push origin automatic-JSON-creation
+      # --- Commit WEBSITE ---S
+      - name: Commit website data
+        continue-on-error: true
+        run: |
+          cd website_branch
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add .
+
+          git diff --cached --quiet || git commit -m "Update ncdf data"
+          git push origin website
+
+      - name: Remove website worktree
+        run: rm -rf website_branch
+        
       - name: Install dependencies
+        working-directory: main_repo
         run: |
           pip install -r requirements_sheerwater.txt
 
       - name: Cache nuthatch data
         uses: actions/cache/restore@v4
         with:
-          path: .nuthatch/caches
+          path: main_repo/.nuthatch/caches
           key: nuthatch-
 
       - name: download tahmo data
@@ -74,6 +115,7 @@ jobs:
           timeout_minutes: 60
           max_attempts: 2
           command: |
+            cd main_repo
             yes | python get_tahmo_data.py --country Kenya,Ghana,Senegal,Ethiopia
 
       - name: download IMERG satellite data
@@ -83,6 +125,7 @@ jobs:
           timeout_minutes: 20
           max_attempts: 2
           command: |
+            cd main_repo
             yes | python get_sat_data.py --country Kenya,Ghana,Senegal,Ethiopia --satellite imerg
 
       - name: download CHIRPS satellite data
@@ -92,15 +135,17 @@ jobs:
           timeout_minutes: 20
           max_attempts: 2
           command: |
+            cd main_repo
             yes | python get_sat_data.py --country Kenya,Ghana,Senegal,Ethiopia --satellite chirps
             
       - name: Cache nuthatch data
         uses: actions/cache/save@v4
         with:
-          path: .nuthatch/caches
+          path: main_repo/.nuthatch/caches
           key: nuthatch-${{ github.run_id }}
      
       - name: generate plots
+        working-directory: main_repo
         continue-on-error: true
         run: |
           yes | python plot_sat_vs_stations.py --country Kenya,Ghana,Senegal,Ethiopia
@@ -110,9 +155,9 @@ jobs:
         with:
           name: s2s_data
           path: |
-            plots/**/*.png
-            private_plots/**/*.png
-            private_data/**/*.csv
+            main_repo/plots/**/*.png
+            main_repo/private_plots/**/*.png
+            main_repo/private_data/**/*.csv
 
   email:
     needs: download
@@ -121,35 +166,17 @@ jobs:
         include:
           - country: Kenya
             emails: >
-              josh@rhizaresearch.org,
-              genevieve@rhizaresearch.org,
-              chriskngetich@gmail.com,
-              gacherujemimah@gmail.com,
-              mrforecasting@gmail.com,
-              koderaphillips@yahoo.com,
-              marykilavi@yahoo.com,
-              hwkimani1@gmail.com,
-              chrisfunk@ucsb.edu,
               alec.jong@gmail.com,
-              uiyov@student.kit.edu,
-              sshukla@ucsb.edu 
+
           - country: Ghana
             emails: >
-              josh@rhizaresearch.org,
-              genevieve@rhizaresearch.org,
-              C.M.Wainwright@leeds.ac.uk,
-              D.J.Parker@leeds.ac.uk
+              alec.jong@gmail.com,             
           - country: Senegal
             emails: >
-              josh@rhizaresearch.org,
-              genevieve@rhizaresearch.org,
-              C.M.Wainwright@leeds.ac.uk,
-              D.J.Parker@leeds.ac.uk
+              alec.jong@gmail.com,
           - country: Ethiopia
             emails: >
-              josh@rhizaresearch.org,
-              genevieve@rhizaresearch.org,
-              katiekowal@uchicago.edu
+              alec.jong@gmail.com,
     runs-on: ubuntu-latest
     steps:
       - name: Get current date
@@ -178,13 +205,12 @@ jobs:
           body: Attached are dekadal and weekly outlooks and historical station data related to the subseasonal forecast. You can also view the data (except for the station data) at ${{ github.server_url }}/${{ github.repository }}.
           reply_to: genevieve@rhizaresearch.org
           attachments: >
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/dekadal_precip.png, 
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_precip.png, 
+            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/dekadal_precip.png,
+            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_precip.png,
             plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_precip_downscaled_clipped.png,
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_medium_range_precip.png,             
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/imerg_Kenya_dekadal.png, 
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/imerg_Kenya_weekly.png, 
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/chirps_Kenya_dekadal.png, 
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/chirps_Kenya_weekly.png, 
-            private_plots/${{ matrix.country }}/${{ steps.date.outputs.date }}/*.png, 
+            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/imerg_Kenya_dekadal.png,
+            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/imerg_Kenya_weekly.png,
+            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/chirps_Kenya_dekadal.png,
+            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/chirps_Kenya_weekly.png,
+            private_plots/${{ matrix.country }}/${{ steps.date.outputs.date }}/*.png,
             private_data/station_data/${{ matrix.country }}/${{ steps.date.outputs.date }}/*.csv
