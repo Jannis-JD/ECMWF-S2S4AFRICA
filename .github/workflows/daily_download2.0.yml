@@ -12,7 +12,7 @@ jobs:
   download:
     runs-on: ubuntu-latest
     env:
-      DATA_BRANCH: automatic-JSON-creation
+      DATA_BRANCH: main
       WEBSITE_BRANCH: website
       DATA_DIR: website_data       # root folder on main branch
       OUTPUT_DIR: ncdf_data             # output folder on website branch
