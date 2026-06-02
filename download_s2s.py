@@ -34,14 +34,14 @@ for ftype in ['perturbed_forecast','control_forecast']:
         "level_type": "single_level",
         "variable": ["total_precipitation"], 
         "leadtime_hour": ["0/to/1104/by/24"],
-        "area":[23,-20,-37,59],
+        "area":[21.5,-27,-30,66],
         }
     
     target=f"{path}/ECMWF_s2s_{ftype}_precip_46days_23N-20W-37S-59E.grib"
 
     client.retrieve(dataset, base_request | edit_request_precip).download(target)
 
-    base_request= base_request | {"area":[9,30,-6,45]}
+    base_request= base_request | {"area":[21.5,-18,-34.5,51]}
 
     edit_request_daily_vars={
         "level_type": "single_level",
@@ -61,7 +61,7 @@ for ftype in ['perturbed_forecast','control_forecast']:
         "variable": [
         "10_m_u_component_of_wind",
         "10_m_v_component_of_wind"],
-        "leadtime_hour": ["0/to/1008/by/6"],
+        "leadtime_hour": ["0/to/1008/by/24"],
     }
     target= f"{path}/ECMWF_s2s_{ftype}_10wind_42days_7N-32E-6S-43E.grib"
 
@@ -73,7 +73,7 @@ for ftype in ['perturbed_forecast','control_forecast']:
         "maximum_2_m_temperature_in_the_last_6_hours",
         "minimum_2_m_temperature_in_the_last_6_hours"
         ],
-        "leadtime_hour": ["6/to/1014/by/6"],
+        "leadtime_hour": ["6/to/1014/by/12"],
     }
 
     target= f"{path}/ECMWF_s2s_{ftype}_Tminmax_42days_7N-32E-6S-43E.grib"
