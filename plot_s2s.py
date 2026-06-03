@@ -118,6 +118,8 @@ for country in bboxes.keys():
     weekly_path=f'{base_path}/weekly'
     dekade_path=f'{base_path}/dekadal'
     monthly_path=f'{base_path}/monthly'
+    weekly_temp_path=f'{weekly_path}/t2m/'
+
 
     os.makedirs(base_path, exist_ok=True)
     os.makedirs(weekly_path, exist_ok=True)
@@ -152,6 +154,25 @@ for country in bboxes.keys():
     gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap='seismic',change=True,fontsize=fs)
     plt.savefig(f'{weekly_path}/weekly_change_in_precip.png',bbox_inches='tight')
     plt.close()
+
+    if country!="Senegal":
+        print(country)
+
+        fig=gef.panel_plot_variable(efi,variable='tp',forecast_timestep=efi.step.values,vmax=1,vmin=0.5,cmap=gef.cmap_efi,add_contour=sot.tp,contourlevels=[0,1,2,5,8],contourcmap='k',fontsize=fs)
+        plt.savefig(f'{weekly_path}/efi_sot_precip.png',bbox_inches='tight')
+        plt.close()
+
+        os.makedirs(weekly_temp_path, exist_ok=True)
+
+        gef.ensemble_plots(ds_to_plot,m_climate,ensemble_stats_tp[0],ensemble_stats_tp[1],ensemble_stats_tp[2],'tp',weekly_path,country=country,fontsize=fs,major_cities=major_cities)
+        
+        ds_to_plot_temp=gef.convert_to_celcius(week_dailyvars,'t2m')
+
+        gef.ensemble_plots(ds_to_plot_temp,mclim_celcius,ensemble_stats_t2m[0],ensemble_stats_t2m[1],ensemble_stats_t2m[2],'t2m',weekly_temp_path,country=country,fontsize=fs,major_cities=major_cities)
+
+        fig=gef.panel_plot_variable(ds_to_plot_temp,variable='t2m',forecast_timestep=ds_to_plot_temp.step.values,cmap='rainbow',fontsize=fs)
+        plt.savefig(f'{weekly_temp_path}/t2m.png',bbox_inches='tight')
+        plt.close()
 
     if country=='Kenya':
         exceedance_percentage=gef.get_exceedance_percentage(ds_to_plot_dekade,'tp',20,comparison='greater')
@@ -223,7 +244,6 @@ for country in bboxes.keys():
         fig=gef.quiver_plot_variable(week_wind700_speed,"u","v",week_wind700_speed["step"],cmap='YlGn')
         plt.savefig(f'{save_path}/700hPa-wind_vectors.png',bbox_inches='tight')
         plt.close()
-            
 
         #--------------temp-----------------------------------------------------------------------------------------------------------------------------------------------------
         vmaxt6h=gef.convert_to_celcius(week_6hTminmax,'mx2t6').mean('number').mx2t6.max()
@@ -238,25 +258,6 @@ for country in bboxes.keys():
 
         fig=gef.panel_plot_variable(gef.convert_to_celcius(week_6hTminmax,'mn2t6'),variable='mn2t6',forecast_timestep=week_6hTminmax.step.values,cmap='rainbow',fontsize=fs,vmax=vmaxt6h,vmin=vmint6h)
         plt.savefig(f'{weekly_path}/t2m/min_temp.png',bbox_inches='tight')
-        plt.close()
-        
-    if country!="Senegal":
-
-        print(country)
-
-        fig=gef.panel_plot_variable(efi,variable='tp',forecast_timestep=efi.step.values,vmax=1,vmin=0.5,cmap=gef.cmap_efi,add_contour=sot.tp,contourlevels=[0,1,2,5,8],contourcmap='k',fontsize=fs)
-        plt.savefig(f'{weekly_path}/efi_sot_precip.png',bbox_inches='tight')
-        plt.close()
-
-        gef.ensemble_plots(ds_to_plot,m_climate,ensemble_stats_tp[0],ensemble_stats_tp[1],ensemble_stats_tp[2],'tp',weekly_path,country=country,fontsize=fs,major_cities=major_cities)
-        
-        weekly_temp_path=f'{weekly_path}/t2m/'
-        ds_to_plot_temp=gef.convert_to_celcius(week_dailyvars,'t2m')
-
-        gef.ensemble_plots(ds_to_plot_temp,mclim_celcius,ensemble_stats_t2m[0],ensemble_stats_t2m[1],ensemble_stats_t2m[2],'t2m',weekly_temp_path,country=country,fontsize=fs,major_cities=major_cities)
-
-        fig=gef.panel_plot_variable(ds_to_plot_temp,variable='t2m',forecast_timestep=ds_to_plot_temp.step.values,cmap='rainbow',fontsize=fs)
-        plt.savefig(f'{weekly_temp_path}/t2m.png',bbox_inches='tight')
         plt.close()
 
 #---------Save data to website branch---------------------------------------------------------------------------
