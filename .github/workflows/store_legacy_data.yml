@@ -1,4 +1,4 @@
-name: Daily ECMWF Download
+name: Move old data to drive
 
 permissions:
   contents: write
