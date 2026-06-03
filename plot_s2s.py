@@ -41,7 +41,7 @@ data_weekly.to_netcdf(f'{data_path}/data_weekly.nc')
 data_dekade.to_netcdf(f'{data_path}/data_dekade.nc')
 data_monthly.to_netcdf(f'{data_path}/data_monthly.nc')
 
-m_climate_big = gef.open_mclimate(data_weekly)
+m_climate_big = gef.open_mclimate(data_weekly,folder_path=f'{prefix}/m-climate/')
 
 efi,sot = efi_sot.EFI_SOT(data_weekly, m_climate_big)
 
@@ -168,7 +168,7 @@ for country in bboxes.keys():
         inputs=['tcw','d2m','cape']
         cmaps=['YlGnBu','YlGnBu','jet']
 
-        mclim=gef.open_mclimate(week_dailyvars,var="CAPE_tcw_t2m_d2m_RH").sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
+        mclim=gef.open_mclimate(week_dailyvars,folder_path=f'{prefix}/m-climate/',var="CAPE_tcw_t2m_d2m_RH").sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
         hold_ensemble_stats_var=[]    
         for i,var in enumerate(inputs):
             save_path=f'{weekly_path}/{var}/'
@@ -185,7 +185,7 @@ for country in bboxes.keys():
 
         # ------------winds 500hPa--------------------------------------------------------------------------------------------------------------------------------------------------------
        
-        mclim=gef.open_mclimate(week_wind500,var="700_500_wind_new").sel(level=500).sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
+        mclim=gef.open_mclimate(week_wind500,folder_path=f'{prefix}/m-climate/',var="700_500_wind_new").sel(level=500).sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
         var='w'
         save_path=f'{weekly_path}/w_500hPa/'
         ds_to_plot_var=week_wind500.sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
@@ -201,7 +201,7 @@ for country in bboxes.keys():
         save_path=f'{weekly_path}/10m-wind/'
         week_wind10_speed=gef.windspeed(week_wind10,'u10','v10').sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
 
-        mclim=gef.open_mclimate(week_wind10,var="10m_wind").sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
+        mclim=gef.open_mclimate(week_wind10,folder_path=f'{prefix}/m-climate/',var="10m_wind").sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
         mclim_speed=gef.windspeed(mclim,'u10','v10')
         gef.ensemble_plots_quiver(week_wind10_speed,mclim_speed,'u10','u10','v10',save_path,'Kenya',fs,major_cities)
         gef.ensemble_plots_quiver(week_wind10_speed,mclim_speed,'v10','u10','v10',save_path,'Kenya',fs,major_cities)
@@ -215,7 +215,7 @@ for country in bboxes.keys():
 
         week_wind700_speed=gef.windspeed(week_wind700,'u','v').sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
 
-        mclim=gef.open_mclimate(week_wind700_speed,var="700_500_wind_new").sel(level=700).sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
+        mclim=gef.open_mclimate(week_wind700_speed,folder_path=f'{prefix}/m-climate/',var="700_500_wind_new").sel(level=700).sel(longitude=slice(gef.lon1, gef.lon2),latitude=slice(gef.lat1, gef.lat2))
         mclim_speed=gef.windspeed(mclim,'u','v')
         gef.ensemble_plots_quiver(week_wind700_speed,mclim_speed,'u','u','v',save_path,'Kenya',fs,major_cities)
         gef.ensemble_plots_quiver(week_wind700_speed,mclim_speed,'v','u','v',save_path,'Kenya',fs,major_cities)
