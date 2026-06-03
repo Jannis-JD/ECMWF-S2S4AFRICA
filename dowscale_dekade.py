@@ -70,6 +70,8 @@ try:
 
     rescaled_forecast=gef.rank_upscale_and_align(extended_fclim.tp.sortby('latitude',ascending=False).sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2'])),chirps_dekades_ds.tp.sortby('latitude',ascending=False))
     rescaled_forecast=rescaled_forecast.assign_coords({'time':extended_fclim.time,'valid_time':extended_fclim.valid_time}).to_dataset(name='tp')
+    rescaled_forecast=rescaled_forecast.where(rescaled_forecast>=0)
+
     rescaled_forecast.tp.attrs=data_dekade.tp.attrs
 
     rescaled_forecast.to_netcdf(f'data/{date_str}/data_dekade_downscaled.nc')
@@ -87,6 +89,38 @@ try:
     ds_to_plot=rescaled_forecast.sortby('latitude',ascending=False).sel(longitude=slice(bboxes[country]['lon1'],bboxes[country]['lon2']),latitude=slice(bboxes[country]['lat1'],bboxes[country]['lat2'])).transpose('latitude', 'longitude','step')
     fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap=cmap,fontsize=fs,vmax=int(ds_to_plot.quantile(0.99).tp.values))
     plt.savefig(f'plots/{country}/{date_str}/dekadal/dekadal_precip_downscaled.png',bbox_inches='tight')
+
+    dirname=f'data/{date_str}/geotifs_kenya/'
+    os.makedirs(dirname,exist_ok=True)
+
+    for i,forecast_timestep in enumerate(data_dekade.step.values):
+        #get start and end time
+        if forecast_timestep == np.atleast_1d(data_dekade.step)[0]:
+            start_time=data_dekade.time
+            end_time=(data_dekade.time+forecast_timestep)
+        else:
+            dt=data_dekade.step[1]-data_dekade.step[0]
+            start_time=data_dekade.sel(step=forecast_timestep).valid_time-dt
+            end_time=data_dekade.sel(step=forecast_timestep).valid_time
+        fname=f'downscaled_rainfall_forecast_init_{str(data_dekade.time.values)[0:10]}_{fclim_chirps[2][i]}.tif'
+
+        to_save=ds_to_plot.isel(step=i)
+        to_save.rio.to_raster(dirname+fname)    
+        to_save.rio.write_crs("EPSG:4326", inplace=True)
+        to_save.tp.rio.to_raster(f"{dirname+fname}.bil", driver="EHdr")
+
+    gdf = gpd.read_file("downscale_data/Kenya_Counties_KNSDI.shp").set_crs("EPSG:4326")
+
+    rescaled_forecast = rescaled_forecast.rio.write_crs("EPSG:4326")
+
+    # Reproject shapefile
+    gdf = gdf.to_crs(rescaled_forecast.rio.crs)
+
+    # Clip
+    ds_to_plot = rescaled_forecast.rio.clip(gdf.geometry, gdf.crs, drop=True).transpose('latitude', 'longitude','step').sortby('latitude',ascending=False)
+    fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap=cmap,fontsize=fs,vmax=int(ds_to_plot.quantile(0.99).tp.values))
+    plt.savefig(f'plots/{country}/{date_str}/dekadal/dekadal_precip_downscaled_clipped.png',bbox_inches='tight')
+
 
     anomaly=rescaled_forecast-chirps_dekades_ds.mean('rank')
 
@@ -123,39 +157,6 @@ try:
         districts.boundary.plot(ax=ax, color="black", linewidth=0.5)
 
     plt.savefig(f'plots/{country}/{date_str}/dekadal/dekadal_precip_downscaled_anomaly_clipped.png',bbox_inches='tight')
-
-
-    dirname=f'data/{date_str}/geotifs_kenya/'
-    os.makedirs(dirname,exist_ok=True)
-
-    for i,forecast_timestep in enumerate(data_dekade.step.values):
-        #get start and end time
-        if forecast_timestep == np.atleast_1d(data_dekade.step)[0]:
-            start_time=data_dekade.time
-            end_time=(data_dekade.time+forecast_timestep)
-        else:
-            dt=data_dekade.step[1]-data_dekade.step[0]
-            start_time=data_dekade.sel(step=forecast_timestep).valid_time-dt
-            end_time=data_dekade.sel(step=forecast_timestep).valid_time
-        fname=f'downscaled_rainfall_forecast_init_{str(data_dekade.time.values)[0:10]}_{fclim_chirps[2][i]}.tif'
-
-        to_save=ds_to_plot.isel(step=i)
-        to_save.rio.to_raster(dirname+fname)    
-        to_save.rio.write_crs("EPSG:4326", inplace=True)
-        to_save.tp.rio.to_raster(f"{dirname+fname}.bil", driver="EHdr")
-
-    gdf = gpd.read_file("downscale_data/Kenya_Counties_KNSDI.shp").set_crs("EPSG:4326")
-
-    rescaled_forecast = rescaled_forecast.rio.write_crs("EPSG:4326")
-
-    # Reproject shapefile
-    gdf = gdf.to_crs(rescaled_forecast.rio.crs)
-
-    # Clip
-    ds_to_plot = rescaled_forecast.rio.clip(gdf.geometry, gdf.crs, drop=True).transpose('latitude', 'longitude','step').sortby('latitude',ascending=False)
-    fig=gef.panel_plot_variable(ds_to_plot,variable='tp',forecast_timestep=ds_to_plot.step.values,cmap=cmap,fontsize=fs,vmax=int(ds_to_plot.quantile(0.99).tp.values))
-    plt.savefig(f'plots/{country}/{date_str}/dekadal/dekadal_precip_downscaled_clipped.png',bbox_inches='tight')
-
 except ValueError:
     print('these are not the days you are looking for...')
 
@@ -215,6 +216,7 @@ for country,upscale_factor in countries_to_downscale:
 
     rescaled_forecast=gef.rank_upscale_and_align(extended_fclim.tp,chirps_weeks_ds.tp,upscale_factor=upscale_factor)
     rescaled_forecast=rescaled_forecast.assign_coords({'time':extended_fclim.time,'valid_time':extended_fclim.valid_time}).to_dataset(name='tp')
+    rescaled_forecast=rescaled_forecast.where(rescaled_forecast>=0)
     rescaled_forecast.tp.attrs=data_weekly.tp.attrs
 
     fs=12

@@ -15,7 +15,7 @@
     <MDI key="GRIB_longitudeOfFirstGridPointInDegrees">333.0</MDI>
     <MDI key="GRIB_longitudeOfLastGridPointInDegrees">66.0</MDI>
     <MDI key="GRIB_missingValue">3.4028234663852886e+38</MDI>
-    <MDI key="GRIB_name">rainfall anomaly</MDI>
+    <MDI key="GRIB_name">Total Precipitation</MDI>
     <MDI key="GRIB_numberOfPoints">2205</MDI>
     <MDI key="GRIB_NV">0</MDI>
     <MDI key="GRIB_Nx">63</MDI>
@@ -30,7 +30,7 @@
     <MDI key="GRIB_uvRelativeToGrid">0</MDI>
     <MDI key="long_name">Total Precipitation</MDI>
     <MDI key="standard_name">unknown</MDI>
-    <MDI key="units">mm</MDI>
+    <MDI key="units">kg m**-2</MDI>
   </Metadata>
   <PAMRasterBand band="1">
     <Description>Total Precipitation</Description>
