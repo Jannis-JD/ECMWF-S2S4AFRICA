@@ -1,0 +1,32 @@
+name: Daily ECMWF Download
+
+permissions:
+  contents: write
+
+on:
+#   schedule:
+#     - cron: "16 00 * * *" # every day at 02:00 UTC
+  workflow_dispatch: # allows manual run
+
+jobs:
+  movefiles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install rclone
+        run: curl https://rclone.org/install.sh | sudo bash
+
+      - name: Configure rclone
+        run: |
+         mkdir -p ~/.config/rclone
+         echo "${{ secrets.RCLONE_CONFIG }}" > ~/.config/rclone/rclone.conf
+
+      - name: Upload to Google Drive
+        run: 
+         rclone copy README.md gdrive:S2S_data/ --progress
+
+
+     
+      
