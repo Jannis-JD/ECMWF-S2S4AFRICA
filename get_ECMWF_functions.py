@@ -1041,6 +1041,10 @@ def plot_variable(ds,variable,forecast_timestep,vmax,vmin,cmap,cities=cities,ax=
 
 def panel_plot_variable(ds,variable,forecast_timestep,cmap,cities=cities,vmax=None,vmin=None,units=None,change=False,add_contour=None,contourlevels=None,contourcmap=None,contourwidths=None,fontsize=16,level=None,norm=None):
     ds=ds.sel(longitude=slice(lon1,lon2),latitude=slice(lat1,lat2))
+
+    if any(t == 0 for t in [len(ds.longitude),len(ds.latitude)]):
+        return None
+
     if level is not None:
         ds = ds.sel(level=level)
     #take ensemble mean before plotting if needed
@@ -1481,6 +1485,7 @@ def meteogram_double(ds,m_climate,lat,lon,cityname,var='tp'):
     return ax
 
 def ensemble_data(ds_to_plot,m_climate,var,quantiles=[75,50,25]):
+    ds_to_plot, m_climate = xr.align(ds_to_plot, m_climate, join="inner")
     chances_to_exceed=[]
     anom_clims=[]
     tercile_clims=[]
@@ -1517,6 +1522,10 @@ def ensemble_plots(ds_to_plot,m_climate,chances_to_exceed,anom_clims,tercile_cli
 
     for quantile in quantiles:
         chance_to_exceed=chances_to_exceed.sel(quantile=quantile).sel(longitude=slice(lon1, lon2),latitude=slice(lat1,lat2))
+
+        if any(t == 0 for t in [len(chance_to_exceed.longitude),len(chance_to_exceed.latitude)]):
+            return None
+    
         fig=panel_plot_variable(chance_to_exceed,var,chance_to_exceed.step.values,fontsize=fontsize,cmap=anom_cmap,norm=norm)
         plt.savefig(f'{save_path}/{quantile}th_percentile_exedance.png',bbox_inches='tight')
         plt.close()
