@@ -23,6 +23,9 @@ jobs:
          mkdir -p ~/.config/rclone
          echo "${{ secrets.RCLONE_CONFIG }}" > ~/.config/rclone/rclone.conf
 
+      - name: Check rclone config
+        run: rclone config show
+
       - name: Upload to Google Drive
         run: 
          rclone copy README.md gdrive:S2S_data/ --progress
