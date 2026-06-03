@@ -265,55 +265,50 @@ all_data=[data_weekly,week_dailyvars,week_6hTminmax,week_wind10,week_wind500,wee
 
 website_path = f'{os.environ["WEBSITE_PATH"]}/ncdf_data//{date_str}/'
 
-plt.figure()
-plt.savefig(f'{os.environ["WEBSITE_PATH"]}/test.png')
-
 # #website_path = f'C:/Users/alecj/Bureaublad/website/ECMWF-S2S4AFRICA/ncdf_data//{date_str}/'
 
-# os.makedirs(website_path, exist_ok=True)
+os.makedirs(website_path, exist_ok=True)
 
-# print(website_path)
+for data in all_data:
+    latlon_str=f'{int(data.latitude.max())}N{int(data.longitude.min())}W{int(data.latitude.min())}S-{int(data.longitude.max())}E'
+    for variable in data.data_vars:
+        if variable=='t2m':
+            var_name='temp'
+        elif variable=='tp':
+            var_name='precip'
+        elif 'level' in data.coords:
+            var_name=f'{variable}{int(data.level)}' 
+        else:
+            var_name=variable
+        filepath = f'{website_path}/ECMWF_s2s_forecast_{var_name}_42days_{latlon_str}.nc'
 
-# for data in all_data:
-#     latlon_str=f'{int(data.latitude.max())}N{int(data.longitude.min())}W{int(data.latitude.min())}S-{int(data.longitude.max())}E'
-#     for variable in data.data_vars:
-#         if variable=='t2m':
-#             var_name='temp'
-#         elif variable=='tp':
-#             var_name='precip'
-#         elif 'level' in data.coords:
-#             var_name=f'{variable}{int(data.level)}' 
-#         else:
-#             var_name=variable
-#         filepath = f'{website_path}/ECMWF_s2s_forecast_{var_name}_42days_{latlon_str}.nc'
+        print(filepath)
 
-#         print(filepath)
+        data[variable].to_netcdf(filepath)
 
-#         data[variable].to_netcdf(filepath)
+names=['chance2xseed','anomclim','tercilecat']
 
-# names=['chance2xseed','anomclim','tercilecat']
+ensemble_stats_var=[xr.merge([hold_ensemble_stats_var[i][j] for i in range(len(hold_ensemble_stats_var))]) for j in range(len(names))]
 
-# ensemble_stats_var=[xr.merge([hold_ensemble_stats_var[i][j] for i in range(len(hold_ensemble_stats_var))]) for j in range(len(names))]
+all_ensemble_data=[ensemble_stats_tp,ensemble_stats_t2m,ensemble_stats_w500,ensemble_stats_var]
 
-# all_ensemble_data=[ensemble_stats_tp,ensemble_stats_t2m,ensemble_stats_w500,ensemble_stats_var]
+for data in all_ensemble_data:
+    latlon_str=f'{int(data[0].latitude.max())}N{int(data[0].longitude.min())}W{int(data[0].latitude.min())}S-{int(data[0].longitude.max())}E'
 
-# for data in all_ensemble_data:
-#     latlon_str=f'{int(data[0].latitude.max())}N{int(data[0].longitude.min())}W{int(data[0].latitude.min())}S-{int(data[0].longitude.max())}E'
-
-#     for i,stat_type in enumerate(data):
-#         for variable in stat_type.data_vars:
-#             ds=stat_type[variable]
-#             if variable=='t2m':
-#                 var_name='temp'
-#             elif variable=='tp':
-#                 var_name='precip'
-#             elif 'level' in ds.coords:
-#                 var_name=f'{variable}{int(ds.level)}' 
-#             else:
-#                 var_name=variable
-#             if 'quantile' in ds.coords:
-#                 for q in ds['quantile']:
-#                     ds.sel(quantile=q).to_netcdf(f'{website_path}/ECMWF_s2s_forecast_{names[i]}_{var_name}_P{int(q)}_42days_{latlon_str}.nc')
-#             else:
-#                 ds=ds.sel(cat='above-normal')-ds.sel(cat='below-normal')
-#                 ds.to_netcdf(f'{website_path}/ECMWF_s2s_forecast_{names[i]}_{var_name}_42days_{latlon_str}.nc')
+    for i,stat_type in enumerate(data):
+        for variable in stat_type.data_vars:
+            ds=stat_type[variable]
+            if variable=='t2m':
+                var_name='temp'
+            elif variable=='tp':
+                var_name='precip'
+            elif 'level' in ds.coords:
+                var_name=f'{variable}{int(ds.level)}' 
+            else:
+                var_name=variable
+            if 'quantile' in ds.coords:
+                for q in ds['quantile']:
+                    ds.sel(quantile=q).to_netcdf(f'{website_path}/ECMWF_s2s_forecast_{names[i]}_{var_name}_P{int(q)}_42days_{latlon_str}.nc')
+            else:
+                ds=ds.sel(cat='above-normal')-ds.sel(cat='below-normal')
+                ds.to_netcdf(f'{website_path}/ECMWF_s2s_forecast_{names[i]}_{var_name}_42days_{latlon_str}.nc')
