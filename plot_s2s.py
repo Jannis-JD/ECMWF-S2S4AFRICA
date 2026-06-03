@@ -11,8 +11,8 @@ today = datetime.today()
 two_days_earlier = today - timedelta(days=2)
 date_str = two_days_earlier.strftime("%Y-%m-%d")
 
-prefix = "C:\\Users\\alecj\\Bureaublad\\ECMWF-S2S4AFRICA\\" 
-# prefix=os.environ["MAIN_PATH"]
+#prefix = "C:\\Users\\alecj\\Bureaublad\\ECMWF-S2S4AFRICA\\" 
+prefix=os.environ["MAIN_PATH"]
 data_path=f'{prefix}/data/{date_str}'
 
 #-----precip extended range---------------------------------------------------------------------------------------#
@@ -261,9 +261,12 @@ for country in bboxes.keys():
         plt.close()
 
 # #---------Save data to website branch---------------------------------------------------------------------------
-# all_data=[data_weekly,week_dailyvars,week_6hTminmax,week_wind10,week_wind500,week_wind700]
+all_data=[data_weekly,week_dailyvars,week_6hTminmax,week_wind10,week_wind500,week_wind700]
 
-# website_path = f'{os.environ["WEBSITE_PATH"]}/ncdf_data//{date_str}/'
+website_path = f'{os.environ["WEBSITE_PATH"]}/ncdf_data//{date_str}/'
+
+plt.figure()
+plt.savefig(f'{os.environ["WEBSITE_PATH"]}/test.png')
 
 # #website_path = f'C:/Users/alecj/Bureaublad/website/ECMWF-S2S4AFRICA/ncdf_data//{date_str}/'
 
