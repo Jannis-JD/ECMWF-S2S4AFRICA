@@ -80,7 +80,7 @@ jobs:
 
           git diff --cached --quiet || git commit -m "Daily automated update"
 
-          git push origin automatic-JSON-creation
+          git push origin main
       # --- Commit WEBSITE ---S
       - name: Commit website data
         continue-on-error: true
