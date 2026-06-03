@@ -41,8 +41,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
+        working-directory: main_repo
         run: |
-          pip install -r main_repo/requirements.txt
+          pip install -r requirements.txt
 
       # - name: Run download script
       #   continue-on-error: true
@@ -52,8 +53,9 @@ jobs:
 
       - name: Generate plots
         continue-on-error: true
+        working-directory: main_repo
         run: |
-          python main_repo/plot_s2s.py
+          python plot_s2s.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           WEBSITE_PATH: ${{ github.workspace }}/website_branch/
