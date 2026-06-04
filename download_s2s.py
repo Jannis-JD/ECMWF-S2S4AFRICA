@@ -28,20 +28,20 @@ for ftype in ['perturbed_forecast','control_forecast']:
         "forecast_type": ftype,
         "time": "00:00",
         "data_format": "grib",
+        "area":[21.5,-18,-34.5,51]
     }
     
     edit_request_precip={
         "level_type": "single_level",
         "variable": ["total_precipitation"], 
         "leadtime_hour": ["0/to/1104/by/24"],
-        "area":[21.5,-27,-30,66],
         }
     
     target=f"{path}/ECMWF_s2s_{ftype}_precip_46days_23N-20W-37S-59E.grib"
 
     client.retrieve(dataset, base_request | edit_request_precip).download(target)
 
-    base_request= base_request | {"area":[21.5,-18,-34.5,51]}
+    # base_request= base_request | {"area":[21.5,-18,-34.5,51]}
 
     edit_request_daily_vars={
         "level_type": "single_level",
