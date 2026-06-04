@@ -28,7 +28,7 @@ for ftype in ['perturbed_forecast','control_forecast']:
         "forecast_type": ftype,
         "time": "00:00",
         "data_format": "grib",
-        "area":[21.5,-18,-34.5,51]
+        "area":[22.5,-21,-34.5,55.5]
     }
     
     edit_request_precip={
