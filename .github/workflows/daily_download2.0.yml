@@ -116,146 +116,146 @@ jobs:
       - name: Remove website worktree
         run: rm -rf website_branch
 
-      # ── Sheerwater / TAHMO / satellite data ──────────────────────
-      - name: Install sheerwater dependencies
-        working-directory: main_repo
-        run: |
-          pip install -r requirements_sheerwater.txt
+  #     # ── Sheerwater / TAHMO / satellite data ──────────────────────
+  #     - name: Install sheerwater dependencies
+  #       working-directory: main_repo
+  #       run: |
+  #         pip install -r requirements_sheerwater.txt
 
-      - name: Cache nuthatch data
-        uses: actions/cache/restore@v4
-        with:
-          path: main_repo/.nuthatch/caches
-          key: nuthatch-
+  #     - name: Cache nuthatch data
+  #       uses: actions/cache/restore@v4
+  #       with:
+  #         path: main_repo/.nuthatch/caches
+  #         key: nuthatch-
 
-      - name: Download TAHMO data
-        uses: nick-fields/retry@v3
-        continue-on-error: true
-        with:
-          timeout_minutes: 60
-          max_attempts: 2
-          command: |
-            cd main_repo
-            yes | python get_tahmo_data.py --country Kenya,Ghana,Senegal,Ethiopia
+  #     - name: Download TAHMO data
+  #       uses: nick-fields/retry@v3
+  #       continue-on-error: true
+  #       with:
+  #         timeout_minutes: 60
+  #         max_attempts: 2
+  #         command: |
+  #           cd main_repo
+  #           yes | python get_tahmo_data.py --country Kenya,Ghana,Senegal,Ethiopia
 
-      - name: Download IMERG satellite data
-        uses: nick-fields/retry@v3
-        continue-on-error: true
-        with:
-          timeout_minutes: 20
-          max_attempts: 2
-          command: |
-            cd main_repo
-            yes | python get_sat_data.py --country Kenya,Ghana,Senegal,Ethiopia --satellite imerg
+  #     - name: Download IMERG satellite data
+  #       uses: nick-fields/retry@v3
+  #       continue-on-error: true
+  #       with:
+  #         timeout_minutes: 20
+  #         max_attempts: 2
+  #         command: |
+  #           cd main_repo
+  #           yes | python get_sat_data.py --country Kenya,Ghana,Senegal,Ethiopia --satellite imerg
 
-      - name: Download CHIRPS satellite data
-        uses: nick-fields/retry@v3
-        continue-on-error: true
-        with:
-          timeout_minutes: 20
-          max_attempts: 2
-          command: |
-            cd main_repo
-            yes | python get_sat_data.py --country Kenya,Ghana,Senegal,Ethiopia --satellite chirps
+  #     - name: Download CHIRPS satellite data
+  #       uses: nick-fields/retry@v3
+  #       continue-on-error: true
+  #       with:
+  #         timeout_minutes: 20
+  #         max_attempts: 2
+  #         command: |
+  #           cd main_repo
+  #           yes | python get_sat_data.py --country Kenya,Ghana,Senegal,Ethiopia --satellite chirps
 
-      - name: Cache nuthatch data
-        uses: actions/cache/save@v4
-        with:
-          path: main_repo/.nuthatch/caches
-          key: nuthatch-${{ github.run_id }}
+  #     - name: Cache nuthatch data
+  #       uses: actions/cache/save@v4
+  #       with:
+  #         path: main_repo/.nuthatch/caches
+  #         key: nuthatch-${{ github.run_id }}
 
-      - name: Generate satellite vs station plots
-        working-directory: main_repo
-        continue-on-error: true
-        run: |
-          yes | python plot_sat_vs_stations.py --country Kenya,Ghana,Senegal,Ethiopia
+  #     - name: Generate satellite vs station plots
+  #       working-directory: main_repo
+  #       continue-on-error: true
+  #       run: |
+  #         yes | python plot_sat_vs_stations.py --country Kenya,Ghana,Senegal,Ethiopia
 
-      - name: Upload files as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: s2s_data
-          path: |
-            main_repo/plots/**/*.png
-            main_repo/private_plots/**/*.png
-            main_repo/private_data/**/*.csv
+  #     - name: Upload files as artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: s2s_data
+  #         path: |
+  #           main_repo/plots/**/*.png
+  #           main_repo/private_plots/**/*.png
+  #           main_repo/private_data/**/*.csv
 
-  email:
-    needs: download
-    strategy:
-      matrix:
-        include:
-          - country: Kenya
-            emails: >
-              josh@rhizaresearch.org,
-              genevieve@rhizaresearch.org,
-              chriskngetich@gmail.com,
-              gacherujemimah@gmail.com,
-              mrforecasting@gmail.com,
-              koderaphillips@yahoo.com,
-              marykilavi@yahoo.com,
-              hwkimani1@gmail.com,
-              chrisfunk@ucsb.edu,
-              alec.jong@gmail.com,
-              uiyov@student.kit.edu,
-              sshukla@ucsb.edu
-          - country: Ghana
-            emails: >
-              josh@rhizaresearch.org,
-              genevieve@rhizaresearch.org,
-              C.M.Wainwright@leeds.ac.uk,
-              D.J.Parker@leeds.ac.uk,
-              alec.jong@gmail.com,
-          - country: Senegal
-            emails: >
-              josh@rhizaresearch.org,
-              genevieve@rhizaresearch.org,
-              C.M.Wainwright@leeds.ac.uk,
-              D.J.Parker@leeds.ac.uk,
-              alec.jong@gmail.com,
-          - country: Ethiopia
-            emails: >
-              josh@rhizaresearch.org,
-              genevieve@rhizaresearch.org,
-              katiekowal@uchicago.edu,
-              alec.jong@gmail.com,
-    runs-on: ubuntu-latest
-    steps:
-      - name: Get current date
-        id: date
-        run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
+  # email:
+  #   needs: download
+  #   strategy:
+  #     matrix:
+  #       include:
+  #         - country: Kenya
+  #           emails: >
+  #             josh@rhizaresearch.org,
+  #             genevieve@rhizaresearch.org,
+  #             chriskngetich@gmail.com,
+  #             gacherujemimah@gmail.com,
+  #             mrforecasting@gmail.com,
+  #             koderaphillips@yahoo.com,
+  #             marykilavi@yahoo.com,
+  #             hwkimani1@gmail.com,
+  #             chrisfunk@ucsb.edu,
+  #             alec.jong@gmail.com,
+  #             uiyov@student.kit.edu,
+  #             sshukla@ucsb.edu
+  #         - country: Ghana
+  #           emails: >
+  #             josh@rhizaresearch.org,
+  #             genevieve@rhizaresearch.org,
+  #             C.M.Wainwright@leeds.ac.uk,
+  #             D.J.Parker@leeds.ac.uk,
+  #             alec.jong@gmail.com,
+  #         - country: Senegal
+  #           emails: >
+  #             josh@rhizaresearch.org,
+  #             genevieve@rhizaresearch.org,
+  #             C.M.Wainwright@leeds.ac.uk,
+  #             D.J.Parker@leeds.ac.uk,
+  #             alec.jong@gmail.com,
+  #         - country: Ethiopia
+  #           emails: >
+  #             josh@rhizaresearch.org,
+  #             genevieve@rhizaresearch.org,
+  #             katiekowal@uchicago.edu,
+  #             alec.jong@gmail.com,
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Get current date
+  #       id: date
+  #       run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
 
-      - name: Get ECMWF lagged date
-        id: ecmwf_date
-        run: echo "::set-output name=date::$(date -d '2 days ago' +'%Y-%m-%d')"
+  #     - name: Get ECMWF lagged date
+  #       id: ecmwf_date
+  #       run: echo "::set-output name=date::$(date -d '2 days ago' +'%Y-%m-%d')"
 
-      - name: Download files as artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: s2s_data
+  #     - name: Download files as artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: s2s_data
 
-      - name: Email out generated plots for ${{ matrix.country }}
-        uses: dawidd6/action-send-mail@v16
-        with:
-          server_address: smtp.resend.com
-          server_port: 587
-          username: resend
-          password: ${{ secrets.RESEND_API_KEY }}
-          subject: Daily S2S Outlook
-          to: ${{ matrix.emails }}
-          from: "${{ matrix.country }} Data Share <info@dashboards.rhizaresearch.org>"
-          body: >
-            Attached are dekadal and weekly outlooks and historical station data related
-            to the subseasonal forecast. You can also view the data (except for the station
-            data) at ${{ github.server_url }}/${{ github.repository }}.
-          reply_to: genevieve@rhizaresearch.org
-          attachments: >
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/dekadal_precip.png,
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_precip.png,
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_precip_downscaled_clipped.png,
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_medium_range_precip.png,             
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/imerg_Kenya_dekadal.png,
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/imerg_Kenya_weekly.png,
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/chirps_Kenya_dekadal.png,
-            plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/chirps_Kenya_weekly.png,
-            private_plots/${{ matrix.country }}/${{ steps.date.outputs.date }}/*.png,
-            private_data/station_data/${{ matrix.country }}/${{ steps.date.outputs.date }}/*.csv
+  #     - name: Email out generated plots for ${{ matrix.country }}
+  #       uses: dawidd6/action-send-mail@v16
+  #       with:
+  #         server_address: smtp.resend.com
+  #         server_port: 587
+  #         username: resend
+  #         password: ${{ secrets.RESEND_API_KEY }}
+  #         subject: Daily S2S Outlook
+  #         to: ${{ matrix.emails }}
+  #         from: "${{ matrix.country }} Data Share <info@dashboards.rhizaresearch.org>"
+  #         body: >
+  #           Attached are dekadal and weekly outlooks and historical station data related
+  #           to the subseasonal forecast. You can also view the data (except for the station
+  #           data) at ${{ github.server_url }}/${{ github.repository }}.
+  #         reply_to: genevieve@rhizaresearch.org
+  #         attachments: >
+  #           plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/dekadal_precip.png,
+  #           plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_precip.png,
+  #           plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_precip_downscaled_clipped.png,
+  #           plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/weekly_medium_range_precip.png,             
+  #           plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/imerg_Kenya_dekadal.png,
+  #           plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/imerg_Kenya_weekly.png,
+  #           plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/dekadal/chirps_Kenya_dekadal.png,
+  #           plots/${{ matrix.country }}/${{ steps.ecmwf_date.outputs.date }}/weekly/chirps_Kenya_weekly.png,
+  #           private_plots/${{ matrix.country }}/${{ steps.date.outputs.date }}/*.png,
+  #           private_data/station_data/${{ matrix.country }}/${{ steps.date.outputs.date }}/*.csv
