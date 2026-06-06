@@ -76,12 +76,12 @@ jobs:
           CATALOG_PATH:   data/weekly/catalog.json
           VARIABLES:      "temp,precip,u10,v10,w500,u700,v700,tcw,cape,d2m,mn2t6,mx2t6"
           N_WEEKS:        "6"
-          KEEP_FORECASTS: "7"
+          KEEP_FORECASTS: "5"
         run: |
           python scripts/nc_to_json_and_catalog.py \
             --ncdf-dir    "${{ env.NCDF_DIR }}" \
-            --output-dir  "website_branch/${{ env.OUTPUT_DIR }}" \
-            --catalog     "website_branch/${{ env.CATALOG_PATH }}" \
+            --output-dir  "${{ env.OUTPUT_DIR }}" \
+            --catalog     "${{ env.CATALOG_PATH }}" \
             --variables   "${{ env.VARIABLES }}" \
             --n-weeks     "${{ env.N_WEEKS }}" \
             --keep        "${{ env.KEEP_FORECASTS }}"
