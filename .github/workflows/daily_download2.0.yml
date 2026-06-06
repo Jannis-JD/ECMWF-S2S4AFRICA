@@ -45,20 +45,20 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      # - name: Run download script
-      #   continue-on-error: true
-      #   working-directory: main_repo
-      #   run: |
-      #     python download_s2s.py
+      - name: Run download script
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          python download_s2s.py
 
-      # - name: Generate plots
-      #   continue-on-error: true
-      #   working-directory: main_repo
-      #   run: |
-      #     python plot_s2s.py
-      #   env:
-      #     MAIN_PATH: ${{ github.workspace }}/main_repo/
-      #     WEBSITE_PATH: ${{ github.workspace }}/website_branch/
+      - name: Generate plots
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          python plot_s2s.py
+        env:
+          MAIN_PATH: ${{ github.workspace }}/main_repo/
+          WEBSITE_PATH: ${{ github.workspace }}/website_branch/
 
       - name: Perform downscaling
         continue-on-error: true
