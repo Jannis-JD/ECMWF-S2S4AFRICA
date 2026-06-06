@@ -78,7 +78,7 @@ jobs:
           N_WEEKS:        "6"
           KEEP_FORECASTS: "7"
         run: |
-          python website_branch/scripts/nc_to_json_and_catalog.py \
+          python scripts/nc_to_json_and_catalog.py \
             --ncdf-dir    "${{ env.NCDF_DIR }}" \
             --output-dir  "website_branch/${{ env.OUTPUT_DIR }}" \
             --catalog     "website_branch/${{ env.CATALOG_PATH }}" \
