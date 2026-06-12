@@ -1,9 +1,9 @@
 ecmwf-api-client
 numpy
 xarray
-matplotlib
-cartopy>=0.23.0
-shapely>=2.0
+matplotlib<=3.10.9
+cartopy
+shapely
 cfgrib
 pandas
 netCDF4

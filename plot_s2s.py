@@ -51,8 +51,7 @@ ensemble_stats_tp=gef.ensemble_data(data_weekly_cut_to_mclimate,m_climate_big,'t
 
 # #-----precip medium range---------------------------------------------------------------------------------------#
 data_weekly_medium=xr.open_dataset(f'{data_path}/medium_range_precip.nc')
-data_weekly_medium.tp.attrs=data_medium_pf.tp.attrs
-data_weekly_medium.tp.attrs['units']='mm'
+
 
 # # #------other vars-----------------------------------------------------------------------------------------#
 dailyvars=gef.open_forecast(date_str,'CAPE_tcw_t2m_d2m_RH',data_path)

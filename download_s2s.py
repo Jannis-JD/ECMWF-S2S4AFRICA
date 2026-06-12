@@ -136,7 +136,11 @@ data_medium_pf=xr.open_dataset(filename1,engine='cfgrib').sel(longitude=slice(-2
 data_medium_cf=xr.open_dataset(filename2,engine='cfgrib').assign_coords({'number':0}).sel(longitude=slice(-21,55.5),latitude=slice(22.5,-34.5))
 data_medium=xr.concat([data_medium_pf,data_medium_cf],dim='number')
 data_weekly_medium=data_medium.diff('step')*1000
+data_weekly_medium.tp.attrs=data_medium_pf.tp.attrs
+data_weekly_medium.tp.attrs['units']='mm'
 data_weekly_medium.to_netcdf(f'{path}/medium_range_precip.nc')
 
 os.remove(filename1)
+os.remove(filename1+'.5b7b6.idx')
 os.remove(filename2)
+os.remove(filename2+'.5b7b6.idx')
