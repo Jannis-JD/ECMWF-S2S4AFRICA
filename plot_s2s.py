@@ -87,6 +87,7 @@ bboxes = {
     "Ghana": {"lat1": 12, "lon1": -4, "lat2": 4, "lon2": 2},
     "Senegal": {"lat1": 17, "lon1": -17.5, "lat2": 12, "lon2": -11},
     "Ethiopia": {"lat1": 16, "lon1": 32, "lat2": 2, "lon2": 49},
+    "Great_Horn":{"lat1": 25.5, "lon1": 19.5, "lat2": -8, "lon2": 57},
 }
 
 major_cities = {
