@@ -50,11 +50,7 @@ data_weekly_cut_to_mclimate=data_weekly.sel(longitude=slice(m_climate_big.longit
 ensemble_stats_tp=gef.ensemble_data(data_weekly_cut_to_mclimate,m_climate_big,'tp',quantiles=[75,50,25])
 
 # #-----precip medium range---------------------------------------------------------------------------------------#
-data_medium_pf=xr.open_dataset(f"{prefix}data/{date_str}/medium-tp-{date_str}-mean-pf.grib",engine='cfgrib')
-data_medium_cf=xr.open_dataset(f"{prefix}data/{date_str}/medium-tp-{date_str}-mean-cf.grib",engine='cfgrib').assign_coords({'number':0})
-data_medium=xr.concat([data_medium_pf,data_medium_cf],dim='number')
-data_weekly_medium=data_medium.diff('step')*1000
-data_weekly_medium=data_weekly_medium.mean('number')
+data_weekly_medium=xr.open_dataset(f'{data_path}/medium_range_precip.nc')
 data_weekly_medium.tp.attrs=data_medium_pf.tp.attrs
 data_weekly_medium.tp.attrs['units']='mm'
 

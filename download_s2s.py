@@ -2,6 +2,7 @@ import cdsapi
 from datetime import datetime, timedelta
 import os
 from ecmwf.opendata import Client
+import xarray as xr
 
 # ---------------------------
 # Compute the date two days earlier
@@ -106,8 +107,8 @@ for ftype in ['perturbed_forecast','control_forecast']:
 #download medium range precip
 client = Client("ecmwf", beta=False)
 
-filename1 = f'{path}/medium-tp-{date_str}-mean-pf.grib'
-filename2 = f'{path}/medium-tp-{date_str}-mean-cf.grib'
+filename1 = f'{path}/medium-tp-{date_str}-mean-pf_big.grib'
+filename2 = f'{path}/medium-tp-{date_str}-mean-cf_big.grib'
 
 client.retrieve(
     date=date_str,
@@ -130,3 +131,12 @@ client.retrieve(
     param=['tp'],
     target=filename2
 )
+
+data_medium_pf=xr.open_dataset(filename1,engine='cfgrib').sel(longitude=slice(-21,55.5),latitude=slice(22.5,-34.5))
+data_medium_cf=xr.open_dataset(filename2,engine='cfgrib').assign_coords({'number':0}).sel(longitude=slice(-21,55.5),latitude=slice(22.5,-34.5))
+data_medium=xr.concat([data_medium_pf,data_medium_cf],dim='number')
+data_weekly_medium=data_medium.diff('step')*1000
+data_weekly_medium.to_netcdf(f'{path}/medium_range_precip.nc')
+
+os.remove(filename1)
+os.remove(filename2)
