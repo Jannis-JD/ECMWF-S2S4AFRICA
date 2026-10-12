@@ -128,7 +128,7 @@ jobs:
           uv run fetch_dynamical.py \
             --dataset noaa-gefs-forecast-35-day\
             --date ${{ steps.ecmwf_date.outputs.date }} \
-            --countries "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn"\
+            --countries "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn,Somalia"\
             --variable precipitation_surface \
             --output ./data/${{ steps.ecmwf_date.outputs.date }}/gefs/  
 
@@ -140,7 +140,7 @@ jobs:
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           WEBSITE_PATH: ${{ github.workspace }}/website_branch/
-          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn"
+          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn,Somalia"
           AI_ACTIVE: 'True'
 
       - name: Generate Indian Ocean state plot
@@ -166,7 +166,7 @@ jobs:
           python plot_gefs.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn"
+          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn,Somalia"
 
       - name: Perform downscaling
         continue-on-error: true
@@ -175,7 +175,7 @@ jobs:
           python dowscale_dekade.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          DEKADE_COUNTRIES: "Kenya,Great_Horn,Ethiopia"
+          DEKADE_COUNTRIES: "Kenya,Great_Horn,Ethiopia,Somalia"
           WEEK_COUNTRIES: "Kenya,Ghana"
 
       # ── Authenticate to Google Cloud (Workload Identity Federation) ──
@@ -215,7 +215,7 @@ jobs:
           python plot_s2s_04deg_.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          COUNTRIES: "Kenya,Ethiopia,Great_Horn"
+          COUNTRIES: "Kenya,Ethiopia,Great_Horn,Somalia"
           DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
           FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
 
@@ -671,7 +671,7 @@ jobs:
                   if country and email:
                       country_emails[country].add(email)
 
-          KNOWN_COUNTRIES = ["Namibia", "Botswana", "Kenya", "Zambia", "Madagascar", "Angola", "Ghana", "Senegal", "Ethiopia", "Zimbabwe", "Malawi","Great_Horn"]
+          KNOWN_COUNTRIES = ["Namibia", "Botswana", "Kenya", "Zambia", "Madagascar", "Angola", "Ghana", "Senegal", "Ethiopia", "Zimbabwe", "Malawi","Great_Horn","Somalia"]
           matrix = [
               {"country": c, "emails": ",".join(sorted(country_emails[c]))}
               for c in KNOWN_COUNTRIES

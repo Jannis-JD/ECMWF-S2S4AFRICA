@@ -70,7 +70,7 @@ jobs:
           uv run fetch_dynamical.py \
             --dataset noaa-gefs-forecast-35-day\
             --date ${{ inputs.date_str }} \
-            --countries "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn"\
+            --countries "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn,Somalia"\
             --variable precipitation_surface \
             --output ./data/${{ inputs.date_str }}/gefs/
 
@@ -82,7 +82,7 @@ jobs:
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           WEBSITE_PATH: ${{ github.workspace }}/website_branch/
-          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn"
+          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn,Somalia"
           AI_ACTIVE: 'True'
           DATE_STR: "${{ inputs.date_str }}"
 
@@ -102,7 +102,7 @@ jobs:
           python plot_gefs.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn"
+          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn,Somalia"
           DATE_STR: "${{ inputs.date_str }}"
 
       - name: Perform downscaling
@@ -112,7 +112,7 @@ jobs:
           python dowscale_dekade.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          DEKADE_COUNTRIES: "Kenya,Great_Horn,Ethiopia"
+          DEKADE_COUNTRIES: "Kenya,Great_Horn,Ethiopia,Somalia"
           WEEK_COUNTRIES: "Kenya,Ghana"
           DATE_STR: "${{ inputs.date_str }}"
 
@@ -153,7 +153,7 @@ jobs:
           python plot_s2s_04deg_.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          COUNTRIES: "Kenya,Ethiopia,Great_Horn"
+          COUNTRIES: "Kenya,Ethiopia,Great_Horn,Somalia"
           DATE_STR: "${{ inputs.date_str }}"
           FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
 

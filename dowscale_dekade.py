@@ -149,6 +149,7 @@ if (int(month),int(day)) in forecast_files.keys():
         "kenya_plus":{"lat1": 7.5, "lon1":27, "lat2": -7.5, "lon2": 43},
         "Great_Horn":{"lat1": 25.5, "lon1": 19.5, "lat2": -8, "lon2": 57},
         "Ethiopia": {"lat1": 16, "lon1": 32, "lat2": 2, "lon2": 49},
+        "Somalia": {"lat1": 13, "lon1": 40.5, "lat2": -2.5, "lon2": 52},
     }
 
     country='Great_Horn'
