@@ -127,7 +127,7 @@ def smooth_over_leads(x):
     return out
 
 
-def lead_bias(rf, obs, annual_cycle):
+def lead_bias(rf, obs, annual_cycle, units="W m-2"):
     rf_anom, obs_anom, years = [], [], []
     for init in rf.init_time.values:
         valid = pd.Timestamp(init) + rf.step.to_index() - pd.Timedelta(days=1)
@@ -154,10 +154,10 @@ def lead_bias(rf, obs, annual_cycle):
     def eq_rms(x):
         return float(np.sqrt((w * x[band] ** 2).sum() / (w.sum() * x.shape[-1])))
     print(f"Lead bias from {len(years)} reforecast years ({years[0]}-{years[-1]}), 15S-15N:")
-    for s in (0, 2, 6, 13, 27, 45):
+    for s in (0, 2, 6, 13, 27, r.shape[1] - 1):
         print(f"  lead {s + 1:2d}: beta {beta[s]:.2f}  bias RMS {eq_rms(bias[s]):.1f}  "
               f"mean {float((w * bias[s][band]).sum() / (w.sum() * bias.shape[-1])):+.1f}  "
-              f"~SE {eq_rms(se[s]):.1f} W m-2")
+              f"~SE {eq_rms(se[s]):.1f} {units}")
 
     coords = {"step": rf.step, "latitude": rf.latitude, "longitude": rf.longitude}
     return (xr.DataArray(bias, coords=coords, dims=("step", "latitude", "longitude")),
