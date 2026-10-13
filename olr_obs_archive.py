@@ -41,9 +41,11 @@ from datetime import date, datetime, timedelta, timezone
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+import gcsfs
 import numpy as np
 import xarray as xr
 import zarr
+from zarr.core.sync import sync as zarr_sync
 
 WB2 = "weatherbench2/datasets/era5_daily/1959-2023_01_10-1h-240x121_equiangular_with_poles_conservative.zarr"
 WB2_VAR = "mean_top_net_long_wave_radiation_flux"
@@ -152,6 +154,17 @@ def latest_arco_day():
     while not _gcs_exists(f"{ARCO}/{ARCO_VAR}/{hour_index(day) + 23}.0.0"):
         day -= timedelta(days=1)
     return day
+
+
+def close_gcs_sessions():
+    """Close the HTTP sessions zarr opened to GCS (WeatherBench2 and ARCO alike).
+    On Windows the interpreter otherwise never exits: zarr closes its event
+    loop at exit, and the proactor loop waits forever on the sockets the
+    sessions keep alive."""
+    for fs in list(gcsfs.GCSFileSystem._cache.values()):
+        session = getattr(fs, "_session", None)
+        if fs.asynchronous and session is not None and not session.closed:
+            zarr_sync(session.close())
 
 
 # ============================================================
@@ -265,4 +278,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        close_gcs_sessions()

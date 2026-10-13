@@ -35,7 +35,9 @@ anomaly from WINDOW_BEFORE days before the forecast to its end:
 and in plots/olr_waves/<date>/: waves_hovmoeller.png, waves_hovmoeller_ncics_style.png
 (Carl Schreck's NCICS monitor look), waves_probability.png (ensemble
 agreement on each wave) kenya_wave_phase_<wave>.png (local phase-amplitude
-diagram at Kenya) and kenya_wave_rose_<wave>.png (its weekly phase roses; the per-member <wave>_kenya_A / _B are stored for it).
+diagram at Kenya), kenya_wave_rose_<wave>.png (its weekly phase roses) and
+kenya_wave_amplitude_<wave>.png (the local amplitude against time, every member
+coloured by its phase); the per-member <wave>_kenya_A / _B are stored for them.
 
 Env vars:
     DATE_STR      forecast init date, defaults to today-2
@@ -50,6 +52,7 @@ from datetime import datetime, timedelta
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.transforms import blended_transform_factory
 import numpy as np
 import pandas as pd
 import scipy.fft
@@ -320,6 +323,7 @@ def main():
     plot_probability(ds, unfiltered, f"{plot_path}waves_probability.png")
     plot_local_phase(ds, clim_local, f"{plot_path}kenya_wave_phase_{{wave}}.png")
     plot_phase_roses(ds, clim_local, f"{plot_path}kenya_wave_rose_{{wave}}.png")
+    plot_amplitude_series(ds, clim_local, f"{plot_path}kenya_wave_amplitude_{{wave}}.png")
 
 
 # ============================================================
@@ -657,6 +661,89 @@ def plot_phase_roses(ds, clim, out):
         fig.legend(handles=handles, loc="outside lower center", ncol=4, fontsize=14, frameon=False)
         fig.suptitle(f"{w} phase at Kenya ({KENYA_POINT:g}E, {NCICS_LAT}S-{NCICS_LAT}N OLR) per forecast week: "
                      f"share of all {ds.sizes['number']} members x 7 days, ECMWF from {date_str}", fontsize=17)
+        path_w = out.format(wave=w)
+        os.makedirs(os.path.dirname(path_w), exist_ok=True)
+        fig.savefig(path_w, dpi=110)
+        plt.close(fig)
+        print(f"Wrote {path_w}")
+
+
+# Local wave amplitude against time at Kenya: the radius of plot_local_phase,
+# sqrt(x^2 + y^2), for every member (thin) and for the ensemble-mean wave
+# (thick), each stretch of line coloured by the phase it is in. The ensemble
+# mean is the amplitude of the mean (x, y), as on the phase diagram, so it
+# drops towards zero where the members disagree on the phase even if each of
+# them has a strong wave -- the members' median amplitude is drawn for that.
+# One colour per phase, P1..P8, going round the colour wheel with the dry
+# phases warm and the wet ones green / blue (checked for colour-blind
+# separation of neighbouring phases).
+PHASE_COLORS = ("#A84A12", "#E8920C", "#8C7A00", "#3FAE2A", "#00918A", "#2A86E8", "#8B3FBF", "#C9356E")
+
+
+def phase_segments(t, x, y, **kwargs):
+    """LineCollection of the amplitude of (x, y) against t (last axis: time),
+    one segment per day-to-day step, coloured by the phase at its middle."""
+    from matplotlib.collections import LineCollection
+    from matplotlib.colors import to_rgb
+    amp = np.hypot(x, y)
+    points = np.stack([np.broadcast_to(t, amp.shape), amp], axis=-1)
+    segments = np.stack([points[..., :-1, :], points[..., 1:, :]], axis=-2).reshape(-1, 2, 2)
+    phase = phase_of((x[..., :-1] + x[..., 1:]) / 2, (y[..., :-1] + y[..., 1:]) / 2).ravel()
+    return LineCollection(segments, colors=np.array([to_rgb(c) for c in PHASE_COLORS])[phase - 1], **kwargs)
+
+
+def plot_amplitude_series(ds, clim, out):
+    """One figure per wave: out is a pattern with {wave}."""
+    from matplotlib import patheffects
+    init = pd.Timestamp(date_str)
+    times = ds.get_index("time")
+    t = matplotlib.dates.date2num(times)
+    fc_days = np.flatnonzero(times >= init)
+    show = np.flatnonzero(times >= init - pd.Timedelta(days=PHASE_OBS_DAYS))
+    fan = np.r_[fc_days[0] - 1, fc_days]       # the members, from the last observed day on
+    weeks = [fc_days[d] for d in PHASE_WEEK_DAYS if d < len(fc_days)]
+
+    for w in PHASE_WAVES:
+        x, y, xh, yh = local_xy(ds, clim, w)
+        xm, ym = x.mean(0), y.mean(0)
+        amp_m = np.hypot(xm, ym)
+        p90 = np.percentile(np.hypot(xh, yh), 90)
+        top = max(PHASE_LIM, float(np.hypot(x, y)[:, fan].max()) * 1.05)
+
+        fig, ax = plt.subplots(figsize=(17, 9), layout="constrained")
+        ax.axhspan(0, 1, color="0.92", zorder=0)
+        ax.text(0.995, 0.5, "weak", ha="right", va="center", fontsize=13, color="0.35",
+                transform=blended_transform_factory(ax.transAxes, ax.transData))
+        ax.axhline(p90, color="0.35", lw=1, ls="--", zorder=1)
+        ax.add_collection(phase_segments(t[fan], x[:, fan], y[:, fan], linewidths=1, alpha=0.22, zorder=2))
+        ax.plot(times[fan], np.median(np.hypot(x, y)[:, fan], axis=0), color="k", lw=1.5, ls=":", zorder=4)
+        ax.plot(times[show], amp_m[show], color="k", lw=6.5, solid_capstyle="round", zorder=5)
+        ax.add_collection(phase_segments(t[show], xm[show], ym[show], linewidths=4, capstyle="round", zorder=6))
+        for i in weeks:
+            ax.annotate(f"P{phase_of(xm[i], ym[i])}", (times[i], amp_m[i]), xytext=(0, 9), textcoords="offset points",
+                        ha="center", fontsize=13, fontweight="bold", zorder=7,
+                        path_effects=[patheffects.withStroke(linewidth=3, foreground="white")])
+        ax.axvline(init, color="k", lw=1.5)
+        ax.text(init, 1.005, "forecast starts", ha="center", va="bottom", fontsize=13,
+                transform=blended_transform_factory(ax.transData, ax.transAxes))
+
+        ax.set_xlim(times[show[0]], times[-1])
+        ax.set_ylim(0, top)
+        ax.xaxis.set_major_locator(matplotlib.dates.WeekdayLocator(byweekday=init.dayofweek))
+        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%d %b"))
+        ax.grid(axis="x", color="0.85", lw=0.8)
+        ax.tick_params(labelsize=14)
+        ax.set_ylabel("local wave amplitude (std)", fontsize=15)
+        ax.set_title(f"{w} amplitude at Kenya ({KENYA_POINT:g}E, {NCICS_LAT}S-{NCICS_LAT}N OLR), coloured by phase\n"
+                     f"ECMWF extended range from {date_str}", fontsize=18, pad=24)
+
+        handles = [plt.Line2D([], [], color="0.3", lw=4, label="ensemble-mean wave\n(ERA5 before the line)"),
+                   plt.Line2D([], [], color="0.3", lw=1, alpha=0.6, label=f"the {ds.sizes['number']} members"),
+                   plt.Line2D([], [], color="k", lw=1.5, ls=":", label="median member amplitude"),
+                   plt.Line2D([], [], color="0.35", lw=1, ls="--", label="ERA5 90th pct for the season")]
+        handles += [plt.Line2D([], [], color=c, lw=4, label=f"P{p}" + {1: " dry", 5: " wet"}.get(p, ""))
+                    for p, c in enumerate(PHASE_COLORS, start=1)]
+        fig.legend(handles=handles, loc="outside right center", fontsize=14, frameon=False)
         path_w = out.format(wave=w)
         os.makedirs(os.path.dirname(path_w), exist_ok=True)
         fig.savefig(path_w, dpi=110)
