@@ -1,4 +1,3 @@
-ecmwf-api-client
 numpy
 xarray
 matplotlib<=3.10.9

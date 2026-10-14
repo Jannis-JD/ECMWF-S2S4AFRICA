@@ -23,3 +23,5 @@ data/**/*.zarr/
 # licensed ECMWF 0.4 degree data, never public (the forecast cut-outs are under private_data/)
 downscale_data/hindcast_04deg/
 *precip_04deg_*
+# hand-written plot captions, kept local for now
+plot_descriptions/
