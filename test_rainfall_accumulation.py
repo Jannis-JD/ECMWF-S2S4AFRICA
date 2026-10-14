@@ -164,7 +164,25 @@ def clip_kenya(da):
 def forecast_members(grid, land):
     """Generator over ensemble members of the daily downscaled forecast on the
     CHIRPS grid, with a `time` dim = the date each day's rain falls on (same
-    recipe as run_rainfall_onset.py's load_daily_downscaled_forecast)."""
+    recipe as run_rainfall_onset.py's load_daily_downscaled_forecast).
+    When the forecast folder holds daily_downscaled_kenya_members.zarr (the
+    0.4 degree per-member daily downscaled forecast), that is used as it is
+    instead of splitting the weekly file into days here."""
+    members_zarr = f'{forecast_path}/daily_downscaled_kenya_members.zarr'
+    if os.path.isdir(members_zarr) and os.environ.get("USE_DAILY_MEMBERS", "1") != "0":
+        members = xr.open_zarr(members_zarr, consolidated=True)
+        fc_init = pd.Timestamp(members.time.values)
+        if fc_init != init:
+            raise ValueError(f"{members_zarr} is initialized {fc_init:%Y-%m-%d}, not {date_str}")
+        print(f"forecast: daily members from {members_zarr} ({members.attrs.get('forecast_resolution', '?')})")
+        for n in members.number.values:
+            daily = members.tp.sel(number=n).load().interp(latitude=grid.latitude, longitude=grid.longitude)
+            # step s covers the 24h ending at init + s: the rain on date init + s - 1 day
+            dates = fc_init + pd.to_timedelta(daily.step.values) - pd.Timedelta(days=1)
+            daily = daily.assign_coords(time=('step', dates)).swap_dims(step='time')
+            daily = daily.drop_vars(['step', 'valid_time', 'number', 'surface', 'year', 'spatial_ref'], errors='ignore')
+            yield n, daily.transpose('time', 'latitude', 'longitude').where(land).astype('float32')
+        return
     rescaled = xr.open_dataset(f'{forecast_path}/data_weekly_Kenya_downscaled.nc').load()
     rescaled = rescaled.interp(latitude=grid.latitude, longitude=grid.longitude)
     s2s = xr.open_zarr(f'{forecast_path}/ECMWF_s2s_precip_{date_str}.zarr', consolidated=True).compute()
@@ -264,8 +282,9 @@ def plot_maps(obs_total, obs_pct, fc_pct, p_above90, save_path, domain=country):
     outline = gpd.read_file(kenya_shapefile).set_crs("EPSG:4326", allow_override=True).dissolve()
     pct_bounds = [0, 25, 50, 75, 90, 110, 125, 150, 200, 300]
     pct_cmap, pct_norm = gef.discrete_cmap('BrBG', pct_bounds, start=0.0)
-    tot_bounds = [0, 10, 25, 50, 75, 100, 150, 200, 300, 400, 600]
-    tot_cmap, tot_norm = gef.discrete_cmap('YlGnBu', tot_bounds)
+    # same continuous colormap and 95th-percentile top as the downscaled precip maps
+    tot_cmap, tot_bounds = gef.cmap, None
+    tot_norm = matplotlib.colors.Normalize(0, max(int(obs_total.quantile(0.95)), 1))
     prob_cmap, prob_norm = gef.discrete_cmap(gef.EXCEEDANCE_COLORS, gef.PROB_BOUNDS)
     panels = [
         (obs_total, tot_cmap, tot_norm, tot_bounds, 'mm',
@@ -282,7 +301,8 @@ def plot_maps(obs_total, obs_pct, fc_pct, p_above90, save_path, domain=country):
         mesh = da.plot.pcolormesh(x='longitude', y='latitude', ax=ax, cmap=cmap_, norm=norm,
                                   transform=ccrs.PlateCarree(), add_colorbar=False)
         ax.add_geometries(outline.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='black', lw=1)
-        cbar = fig.colorbar(mesh, ax=ax, orientation='horizontal', pad=0.05, shrink=0.9, ticks=bounds)
+        cbar = fig.colorbar(mesh, ax=ax, orientation='horizontal', pad=0.05, shrink=0.9, ticks=bounds,
+                            extend='max' if bounds is None else 'neither')
         cbar.set_label(units, fontsize=12)
         ax.set_title(title, fontsize=13, fontweight='bold')
     fig.suptitle(f'Seasonal rainfall accumulation since {season_start:%b %d} — {domain} '
@@ -344,7 +364,8 @@ p_above90 = ((fc_cum.sel(time=fc_end) > clim_q.sel(q=0.9, time=fc_end)).mean('nu
 
 # ---- per calendar week: chance the week's total is above the clim. 90th percentile --
 # same calendar weeks (1st/8th/15th/22nd) as the downscaled spell / >20mm maps
-windows = gef.calendar_windows(init.to_datetime64(), max_lead_days=(fc_end - init).days + 1)
+# as many as fit: the 28-day 0.4 degree forecast is shorter than four calendar weeks can need
+windows = gef.calendar_windows_that_fit(init.to_datetime64(), max_lead_days=(fc_end - init).days + 1)
 
 
 def week_totals(daily):
