@@ -362,6 +362,10 @@ jobs:
           python plot_s2s.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          # plot_s2s.py requires WEBSITE_PATH to write its ncdf_data/ netCDFs.
+          # This dev run never checks out or commits to the website branch,
+          # so point it at a throwaway dir (plot_s2s.py creates it).
+          WEBSITE_PATH: ${{ runner.temp }}/website_branch/
           COUNTRIES: "Kenya"
           AI_ACTIVE: 'True'
           DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
