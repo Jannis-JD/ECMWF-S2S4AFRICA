@@ -10,7 +10,7 @@ string unchanged, since both scripts produce the same ---SLIDE--- delimited form
 
 Captions are written by Claude Sonnet through the claude CLI by default (see CAPTION_BACKEND
 below; in CI it logs in with the CLAUDE_CODE_OAUTH_TOKEN secret) and also saved on their own to
-prompts/captions_vision_<date>.txt. plot_descriptions/caption_eval.py is where the caption
+prompts/captions_vision_<date>.txt. prompts/plot_descriptions/caption_eval.py is where the caption
 prompts and models were compared.
 """
 from google import genai
@@ -65,7 +65,7 @@ slide_labels = {
 }
 
 # How to read each plot, added to the compact caption prompt. Same text as PLOT_GUIDE in
-# plot_descriptions/caption_eval.py, where the prompt was tested.
+# prompts/plot_descriptions/caption_eval.py, where the prompt was tested.
 plot_guide = {
     "weekly_precip": "Weekly ensemble-mean total precipitation from ECMWF S2S on a coarse 1.5 degree grid, one panel per week. The colorbar maximum changes from day to day, so read the numbers off this colorbar.",
     "gefs_weekly_precip": "Weekly ensemble-mean total precipitation from NOAA GEFS, one panel per week (often 5 weeks). The colorbar maximum changes from day to day. Heavy rain at the top edge of the map is usually in southern Ethiopia, not Kenya.",
@@ -79,7 +79,7 @@ plot_guide = {
 
 # CAPTION_PROMPT=compact (default) uses prompts/image_caption_prompt_compact.md plus the plot
 # guide and three Opus-written reference captions of the same plot from
-# plot_descriptions/descriptions.jsonl; "full" uses prompts/image_caption_prompt.md alone.
+# prompts/plot_descriptions/descriptions.jsonl; "full" uses prompts/image_caption_prompt.md alone.
 # CAPTION_BACKEND=claude (default) captions with the claude CLI (CAPTION_MODEL, default sonnet,
 # logged in through CLAUDE_CODE_OAUTH_TOKEN) and falls back to Gemini per image if that fails;
 # CAPTION_BACKEND=gemini uses Gemini only. The synthesis step below always uses Gemini.
@@ -93,7 +93,7 @@ if caption_prompt == "compact":
     with open(f"{prefix}/prompts/image_caption_prompt_compact.md") as f:
         caption_system_prompt = f.read()
     reference_captions = []
-    descriptions = f"{prefix}/plot_descriptions/descriptions.jsonl"
+    descriptions = f"{prefix}/prompts/plot_descriptions/descriptions.jsonl"
     if os.path.exists(descriptions):
         with open(descriptions, encoding="utf-8") as f:
             reference_captions = [json.loads(line) for line in f]
