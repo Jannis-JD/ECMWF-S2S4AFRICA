@@ -100,6 +100,10 @@ on:
         description: "Generate AI weather briefing (Kenya/Great_Horn-only, ignores countries input)"
         type: boolean
         default: true
+      run_image_captions:
+        description: "Caption the 8 Kenya slide plots with Claude Sonnet (ai_weather_briefing_from_images.py, uses the CLAUDE_CODE_OAUTH_TOKEN secret) and put the captions in the email"
+        type: boolean
+        default: true
       use_dev_template:
         description: "Build the briefing from the dev Slides template (on by default here; untick to use the live template)"
         type: boolean
@@ -174,7 +178,7 @@ jobs:
             stage rainfall_onset      "${{ inputs.run_rainfall_onset }}"
             stage chirps_climatology  "${{ inputs.run_chirps_climatology }}"
             echo
-            echo "briefing_slides=${{ inputs.run_briefing_slides }}, ai_briefing=${{ inputs.run_ai_briefing }} (both unaffected by skills_only)"
+            echo "briefing_slides=${{ inputs.run_briefing_slides }}, ai_briefing=${{ inputs.run_ai_briefing }}, image_captions=${{ inputs.run_image_captions }} (all unaffected by skills_only)"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Checkout repo
@@ -665,7 +669,7 @@ jobs:
       # or skipped an upstream stage above). Briefing PNGs were already
       # rsynced and then overwritten by collect; do not pull them again.
       - name: Top up ai_briefing prerequisites from GCS
-        if: ${{ inputs.run_ai_briefing }}
+        if: ${{ inputs.run_ai_briefing || inputs.run_image_captions }}
         continue-on-error: true
         working-directory: main_repo
         run: |
@@ -700,6 +704,39 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           BRIEFING_TEMPLATE_ID: ${{ inputs.use_dev_template && (inputs.dev_template_id || '1McY75NyFK8DsSrJGXfFHLN7EMcQPuTX0') || '1zSp3C35PqDfMKbT8WtEcxoG2EoyIAJA5' }}
           BRIEFING_ALLOW_MISSING_PICTURES: "1"
+
+      # ── Stage: image_captions (experimental). Captions the 8 Kenya slide
+      # plots with Claude Sonnet through the claude CLI, logged in with the
+      # CLAUDE_CODE_OAUTH_TOKEN secret (a `claude setup-token` token, so it
+      # uses that Claude subscription), falling back to Gemini Flash-Lite per
+      # plot. Writes prompts/captions_vision_<date>.txt (put in the email body
+      # below) and prompts/digest_vision_<date>.txt. Not in the production
+      # workflows yet.
+      - name: Install Claude Code
+        if: ${{ inputs.run_image_captions }}
+        continue-on-error: true
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Caption slide plots with Claude Sonnet
+        if: ${{ inputs.run_image_captions }}
+        id: captions
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          python ai_weather_briefing_from_images.py
+          {
+            echo "text<<CAPTIONS_EOF"
+            cat "prompts/captions_vision_${BRIEFING_DATE}.txt"
+            echo "CAPTIONS_EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.BRIEFING_DATE }}
+          ECMWF_DATE_STR: ${{ env.DATE_STR }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CAPTION_BACKEND: claude
+          CAPTION_MODEL: sonnet
 
       # Fresh Drive-scoped token immediately before upload. The job-start
       # auth is for GCS; setup-gcloud can replace it with a cloud-platform
@@ -765,6 +802,8 @@ jobs:
             main_repo/plots/**/${{ env.DATE_STR }}/**
             main_repo/plots/briefing/${{ env.BRIEFING_DATE }}/**
             main_repo/prompts/digest_${{ env.BRIEFING_DATE }}.txt
+            main_repo/prompts/captions_vision_${{ env.BRIEFING_DATE }}.txt
+            main_repo/prompts/digest_vision_${{ env.BRIEFING_DATE }}.txt
             main_repo/s2s_briefing_${{ env.BRIEFING_DATE }}.pptx
 
       - name: Build attachment list
@@ -843,6 +882,9 @@ jobs:
             pptx is in artifacts / Drive TEST, not attached (Resend 10 MB cap).
             Full output: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             Nothing from this run was uploaded to GCS or committed to main/website.
+
+            ${{ steps.captions.outputs.text && 'Slide plot captions (ai_weather_briefing_from_images.py):' || '' }}
+            ${{ steps.captions.outputs.text || '' }}
           attachments: ${{ steps.attachments.outputs.list }}
 
       - name: Email test run results

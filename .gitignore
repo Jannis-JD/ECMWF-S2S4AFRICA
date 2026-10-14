@@ -24,3 +24,6 @@ data/**/*.zarr/
 downscale_data/hindcast_04deg/
 *precip_04deg_*
 /plots/olr_waves
+# cached plot images for the captioning experiments (they are in the public bucket)
+plot_descriptions/images/
+plot_descriptions/runs/
