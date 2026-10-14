@@ -35,7 +35,8 @@ anomaly from WINDOW_BEFORE days before the forecast to its end:
 and in plots/olr_waves/<date>/: waves_hovmoeller.png, waves_hovmoeller_ncics_style.png
 (Carl Schreck's NCICS monitor look), waves_probability.png (ensemble
 agreement on each wave) kenya_wave_phase_<wave>.png (local phase-amplitude
-diagram at Kenya), kenya_wave_rose_<wave>.png (its weekly phase roses) and
+diagram at Kenya), kenya_wave_rose_<wave>.png (its weekly phase roses),
+kenya_wave_rose_daily_Kelvin.png (daily roses over the first 20 days) and
 kenya_wave_amplitude_<wave>.png (the local amplitude against time, every member
 coloured by its phase); the per-member <wave>_kenya_A / _B are stored for them.
 
@@ -323,6 +324,8 @@ def main():
     plot_probability(ds, unfiltered, f"{plot_path}waves_probability.png")
     plot_local_phase(ds, clim_local, f"{plot_path}kenya_wave_phase_{{wave}}.png")
     plot_phase_roses(ds, clim_local, f"{plot_path}kenya_wave_rose_{{wave}}.png")
+    plot_phase_roses(ds, clim_local, f"{plot_path}kenya_wave_rose_daily_{{wave}}.png", days_per_rose=1,
+                     n_roses=ROSE_DAILY_DAYS, waves=ROSE_DAILY_WAVES, ncols=5)
     plot_amplitude_series(ds, clim_local, f"{plot_path}kenya_wave_amplitude_{{wave}}.png")
 
 
@@ -618,15 +621,24 @@ def local_xy(ds, clim, w):
             -a_hist / sa, -b_hist / sb)
 
 
-def plot_phase_roses(ds, clim, out):
-    """One figure per wave (out is a pattern with {wave}), one rose per week."""
+ROSE_DAILY_WAVES = ("Kelvin",)   # a Kelvin wave passes in a few days, so a weekly rose mixes all its phases
+ROSE_DAILY_DAYS = 20
+
+
+def plot_phase_roses(ds, clim, out, days_per_rose=7, n_roses=6, waves=PHASE_WAVES, ncols=3):
+    """One figure per wave (out is a pattern with {wave}), one rose per
+    days_per_rose forecast days: a week by default, or a single day."""
     init = pd.Timestamp(date_str)
     times = ds.get_index("time")
     fc_days = np.flatnonzero(times >= init)
-    weeks = [fc_days[7 * k:7 * k + 7] for k in range(len(fc_days) // 7)]
+    weeks = [fc_days[days_per_rose * k:days_per_rose * (k + 1)]
+             for k in range(min(n_roses, len(fc_days) // days_per_rose))]
     centres = np.radians([(180 - 45 * (p - 1)) % 360 for p in range(1, 9)])    # P1..P8, kept in 0..360
+    daily = days_per_rose == 1
+    nrows = -(-len(weeks) // ncols)
+    scale = 0.75 if daily else 1     # smaller roses and labels on the denser daily grid
 
-    for w in PHASE_WAVES:
+    for w in waves:
         x, y, _, _ = local_xy(ds, clim, w)
         amp, ph = np.hypot(x, y), phase_of(x, y)
 
@@ -637,30 +649,39 @@ def plot_phase_roses(ds, clim, out):
                                     for lo, hi in zip(ROSE_AMP_BINS[:-1], ROSE_AMP_BINS[1:])]))
         rmax = max(sh.sum(0).max() for sh in shares) * 1.1
 
-        fig, axes = plt.subplots(2, 3, figsize=(17, 12.5), subplot_kw={"projection": "polar"}, layout="constrained")
+        fig, axes = plt.subplots(nrows, ncols, figsize=(17 / 3 * ncols * scale, 6.25 * nrows * scale),
+                                 subplot_kw={"projection": "polar"}, layout="constrained", squeeze=False)
+        for ax in axes.flat[len(weeks):]:
+            ax.remove()
         for k, (ax, days, sh) in enumerate(zip(axes.flat, weeks, shares)):
             bottom = np.zeros(8)
             for c, part in zip(ROSE_COLORS, sh):
                 ax.bar(centres, part, width=np.radians(40), bottom=bottom, color=c, edgecolor="k", lw=0.6, zorder=3)
                 bottom += part
             calm = 100 - sh.sum()
-            ax.text(0, 0, f"weak\n{calm:.0f}%", ha="center", va="center", fontsize=13, zorder=5,
+            ax.text(0.5, 0.5, f"weak\n{calm:.0f}%", ha="center", va="center", fontsize=13 * scale, zorder=5,
+                    transform=ax.transAxes,
                     bbox={"boxstyle": "circle", "facecolor": "white", "edgecolor": "k"})
             ax.set_ylim(0, rmax)
+            ax.set_rorigin(-0.2 * rmax)      # bars start on a ring around the "weak" label, not under it
             ax.set_thetalim(0, 2 * np.pi)
             ax.set_xticks(centres)
-            ax.set_xticklabels([f"P{p}" + {1: "\ndry", 5: "\nwet"}.get(p, "") for p in range(1, 9)], fontsize=14)
-            ax.tick_params(axis="y", labelsize=11)
+            ax.set_xticklabels([f"P{p}" + {1: "\ndry", 5: "\nwet"}.get(p, "") for p in range(1, 9)],
+                               fontsize=14 * scale)
+            ax.tick_params(axis="y", labelsize=11 * scale)
             ax.set_rlabel_position(112.5)
             ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(decimals=0))
-            ax.set_title(f"Week {k + 1}: {times[days[0]]:%d %b} - {times[days[-1]]:%d %b}", fontsize=16, pad=14)
+            title = (f"Day {k + 1}: {times[days[0]]:%d %b}" if daily
+                     else f"Week {k + 1}: {times[days[0]]:%d %b} - {times[days[-1]]:%d %b}")
+            ax.set_title(title, fontsize=16 * scale, pad=14 * scale)
 
         handles = [plt.Rectangle((0, 0), 1, 1, facecolor=c, edgecolor="k",
                                  label=f"amplitude {lo:g}-{hi:g}" if np.isfinite(hi) else f"amplitude > {lo:g}")
                    for c, lo, hi in zip(ROSE_COLORS, ROSE_AMP_BINS[:-1], ROSE_AMP_BINS[1:])]
         fig.legend(handles=handles, loc="outside lower center", ncol=4, fontsize=14, frameon=False)
-        fig.suptitle(f"{w} phase at Kenya ({KENYA_POINT:g}E, {NCICS_LAT}S-{NCICS_LAT}N OLR) per forecast week: "
-                     f"share of all {ds.sizes['number']} members x 7 days, ECMWF from {date_str}", fontsize=17)
+        per, sample = ("day", "") if daily else ("week", f" x {days_per_rose} days")
+        fig.suptitle(f"{w} phase at Kenya ({KENYA_POINT:g}E, {NCICS_LAT}S-{NCICS_LAT}N OLR) per forecast {per}: "
+                     f"share of all {ds.sizes['number']} members{sample}, ECMWF from {date_str}", fontsize=17)
         path_w = out.format(wave=w)
         os.makedirs(os.path.dirname(path_w), exist_ok=True)
         fig.savefig(path_w, dpi=110)
