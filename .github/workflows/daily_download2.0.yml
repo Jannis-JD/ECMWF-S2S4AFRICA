@@ -128,21 +128,6 @@ jobs:
         id: ecmwf_date
         run: echo "date=${{ steps.dates.outputs.ecmwf_date }}" >> $GITHUB_OUTPUT
 
-      # The 0.4 degree forecast for init X is on CHC's server by ~21:05 UTC on
-      # day X, so this run usually has the init of the day before: the 0.4
-      # degree products (and the Kenya downscaling made from them) are dated by
-      # that init, a day newer than the ECMWF date. Falls back to the ECMWF date.
-      - name: Resolve 0.4 degree date
-        id: date_04deg
-        working-directory: main_repo
-        run: |
-          python forecast_04deg_dates.py resolve \
-            --run-date "${{ steps.dates.outputs.run_date }}" \
-            --ecmwf-date "${{ steps.dates.outputs.ecmwf_date }}" \
-            || echo "date=${{ steps.dates.outputs.ecmwf_date }}" >> "$GITHUB_OUTPUT"
-        env:
-          FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
-
       - name: Fetch forecast
         working-directory: main_repo
         run: |
@@ -215,6 +200,22 @@ jobs:
       - name: Setup gcloud
         continue-on-error: true
         uses: google-github-actions/setup-gcloud@v2
+
+      # The 0.4 degree forecast for init X is on CHC's server by ~21:05 UTC on
+      # day X, so this run usually has the init of the day before: the 0.4
+      # degree products (and the Kenya downscaling made from them) are dated by
+      # that init, a day newer than the ECMWF date. Falls back to the ECMWF date.
+      # After the auth above: it also looks in the private archive of CHC files.
+      - name: Resolve 0.4 degree date
+        id: date_04deg
+        working-directory: main_repo
+        run: |
+          python forecast_04deg_dates.py resolve \
+            --run-date "${{ steps.dates.outputs.run_date }}" \
+            --ecmwf-date "${{ steps.dates.outputs.ecmwf_date }}" \
+            || echo "date=${{ steps.dates.outputs.ecmwf_date }}" >> "$GITHUB_OUTPUT"
+        env:
+          FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
 
       # ── 0.4 degree precipitation ────────────────────────────────────
       # plot_s2s_04deg_.py downloads the CHC forecast from the address in the
