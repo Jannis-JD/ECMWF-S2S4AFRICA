@@ -27,3 +27,5 @@ downscale_data/hindcast_04deg/
 # cached plot images for the captioning experiments (they are in the public bucket)
 prompts/plot_descriptions/images/
 prompts/plot_descriptions/runs/
+# hand-written plot captions, kept local for now
+plot_descriptions/
