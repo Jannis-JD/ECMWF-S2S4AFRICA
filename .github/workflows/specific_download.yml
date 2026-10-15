@@ -148,7 +148,10 @@ jobs:
       # are there; otherwise it exits and the 1.5 degree outputs stay. The
       # hindcasts are read from the private gs://sheerwater-datalake/ecmwf-0_4
       # store with the credentials of "Auth to Google Cloud" above, so the
-      # service account needs read access to that bucket.
+      # service account needs read access to that bucket. A backfill uses the
+      # input date for the 0.4 degree products too (the daily workflows use the
+      # newer 0.4 degree init, see forecast_04deg_dates.py), so the Kenya
+      # downscaling, onset and briefing all stay on that one date here.
       - name: Generate 0.4 degree precip plots
         continue-on-error: true
         working-directory: main_repo

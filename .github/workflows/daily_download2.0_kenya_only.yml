@@ -27,6 +27,8 @@ jobs:
     outputs:
       briefing_date: ${{ steps.briefing_date.outputs.date }}
       ecmwf_date: ${{ steps.ecmwf_date.outputs.date }}
+      date_04deg: ${{ steps.date_04deg.outputs.date }}
+      downscaled_date: ${{ steps.downscaled_date.outputs.date }}
     env:
       DATA_BRANCH: ${{ github.ref_name }}
       WEBSITE_BRANCH: website
@@ -115,6 +117,21 @@ jobs:
           print(f"Run date {run.isoformat()}; ECMWF model date {ecmwf.isoformat()}")
           PY
 
+      # The 0.4 degree forecast for init X is on CHC's server by ~21:05 UTC on
+      # day X, so the run usually has the init of the day before: the 0.4
+      # degree products (and the Kenya downscaling made from them) are dated by
+      # that init, a day newer than the ECMWF date. Falls back to the ECMWF date.
+      - name: Resolve 0.4 degree date
+        id: date_04deg
+        working-directory: main_repo
+        run: |
+          python forecast_04deg_dates.py resolve \
+            --run-date "${{ steps.dates.outputs.run_date }}" \
+            --ecmwf-date "${{ steps.dates.outputs.ecmwf_date }}" \
+            || echo "date=${{ steps.dates.outputs.ecmwf_date }}" >> "$GITHUB_OUTPUT"
+        env:
+          FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
+
       # ── Work out which stages the main run already finished ───
       # Every run_* output is consumed as `!= 'false'`, so if this step itself
       # fails (no auth, bucket unreachable) the outputs come back empty and the
@@ -124,6 +141,7 @@ jobs:
         continue-on-error: true
         env:
           DATE_STR: ${{ steps.dates.outputs.ecmwf_date }}
+          DATE_04DEG: ${{ steps.date_04deg.outputs.date }}
           FORCE_ALL: ${{ inputs.force_all }}
         run: |
           set -uo pipefail
@@ -132,10 +150,11 @@ jobs:
           if [ "$FORCE_ALL" = "true" ]; then
             echo "force_all set - rebuilding every stage."
           else
-            for prefix in \
+            for prefix in $(printf '%s\n' \
               "plots/Kenya/${DATE_STR}" \
+              "plots/Kenya/${DATE_04DEG}" \
               "plots/diagnostics/${DATE_STR}" \
-              "data/${DATE_STR}/gefs"
+              "data/${DATE_STR}/gefs" | sort -u)
             do
               gcloud storage ls -r "gs://${BUCKET}/${prefix}/**" >> "$manifest" 2>/dev/null || true
             done
@@ -156,6 +175,9 @@ jobs:
 
           K="plots/Kenya/${DATE_STR}"
           D="plots/diagnostics/${DATE_STR}"
+          # the Kenya weekly downscaled forecast and what is made from it are
+          # under the 0.4 degree date (the same as DATE_STR when there's no newer one)
+          K04="plots/Kenya/${DATE_04DEG}"
 
           gefs_ok=false;  have_prefix "data/${DATE_STR}/gefs/gefs_kenya.zarr/" && gefs_ok=true
 
@@ -186,23 +208,23 @@ jobs:
           echo "dowscale_dekade.py:"
           dwn_ok=false
           complete \
-            "${K}/weekly/weekly_precip_downscaled.png" \
-            "${K}/weekly/weekly_precip_downscaled_clipped.png" \
+            "${K04}/weekly/weekly_precip_downscaled.png" \
+            "${K04}/weekly/weekly_precip_downscaled_clipped.png" \
             "${K}/dekadal/dekadal_precip_downscaled.png" \
             "${K}/dekadal/dekadal_precip_downscaled_clipped.png" \
-            "${K}/monthly/monthly_precip_downscaled.png" && dwn_ok=true
+            "${K04}/monthly/monthly_precip_downscaled.png" && dwn_ok=true
 
           echo "run_rainfall_onset.py:"
           onset_ok=false
           complete \
-            "${K}/monthly/onset_chirps_observed.png" \
-            "${K}/monthly/onset_downscaled.png" && onset_ok=true
+            "${K04}/monthly/onset_chirps_observed.png" \
+            "${K04}/monthly/onset_downscaled.png" && onset_ok=true
 
           echo "chirps_agro_climatology.py:"
           chirps_clim_ok=false
           complete \
-            "${K}/monthly/onset_chirps_climatology.png" \
-            "${K}/weekly/median_dryspell_length_chirps_clim.png" && chirps_clim_ok=true
+            "${K04}/monthly/onset_chirps_climatology.png" \
+            "${K04}/weekly/median_dryspell_length_chirps_clim.png" && chirps_clim_ok=true
 
           {
             echo "### Stages detected for ${DATE_STR}"
@@ -237,10 +259,15 @@ jobs:
         working-directory: main_repo
         env:
           DATE_STR: ${{ steps.dates.outputs.ecmwf_date }}
+          DATE_04DEG: ${{ steps.date_04deg.outputs.date }}
         run: |
           mkdir -p "plots/Kenya/${DATE_STR}" "plots/diagnostics/${DATE_STR}" "data/${DATE_STR}"
           gcloud storage rsync -r "gs://${BUCKET}/plots/Kenya/${DATE_STR}" "plots/Kenya/${DATE_STR}" || true
           gcloud storage rsync -r "gs://${BUCKET}/plots/diagnostics/${DATE_STR}" "plots/diagnostics/${DATE_STR}" || true
+          if [ "$DATE_04DEG" != "$DATE_STR" ]; then
+            mkdir -p "plots/Kenya/${DATE_04DEG}"
+            gcloud storage rsync -r "gs://${BUCKET}/plots/Kenya/${DATE_04DEG}" "plots/Kenya/${DATE_04DEG}" || true
+          fi
 
           if [ "${{ steps.detect.outputs.run_gefs_fetch }}" = "false" ]; then
             mkdir -p "data/${DATE_STR}/gefs"
@@ -256,6 +283,11 @@ jobs:
             gcloud storage cp "gs://${KENYA_BUCKET}/${DATE_STR}/data/*Kenya*downscaled*.nc" "data/${DATE_STR}/" || true
             gcloud storage cp "gs://${KENYA_BUCKET}/${DATE_STR}/data/daily_downscaled_kenya.tif" "data/${DATE_STR}/" || true
             gcloud storage rsync -r "gs://${KENYA_BUCKET}/${DATE_STR}/data/geotifs_kenya" "data/${DATE_STR}/geotifs_kenya" || true
+            if [ "$DATE_04DEG" != "$DATE_STR" ]; then
+              mkdir -p "data/${DATE_04DEG}"
+              gcloud storage cp "gs://${KENYA_BUCKET}/${DATE_04DEG}/data/*Kenya*downscaled*.nc" "data/${DATE_04DEG}/" || true
+              gcloud storage cp "gs://${KENYA_BUCKET}/${DATE_04DEG}/data/daily_downscaled_kenya.tif" "data/${DATE_04DEG}/" || true
+            fi
           fi
 
       # download_s2s.py is always run: it resumes per-store from GCS by itself,
@@ -379,13 +411,15 @@ jobs:
       # keep it that way. Only the derived plots (probabilities, EFI/SOT,
       # anomalies, spell lengths: PUBLIC_PLOTS in the script) are copied to
       # plots/<country>/<date>/04deg/ and uploaded with the rest of plots/.
-      # downscale_04deg_.py then overwrites the Kenya weekly
-      # downscaled outputs of the step above under their normal names -- but
-      # only when the forecast for DATE_STR and a hindcast close to that date
-      # are there; otherwise it exits and the 1.5 degree outputs stay. The
-      # hindcasts are read from the private gs://sheerwater-datalake/ecmwf-0_4
-      # store with the credentials of "Auth to Google Cloud" above, so the
-      # service account needs read access to that bucket.
+      # downscale_04deg_.py then writes the Kenya weekly downscaled outputs
+      # under their normal names -- but only when the forecast for its DATE_STR
+      # and a hindcast close to that date are there; otherwise it exits and the
+      # 1.5 degree outputs of the step above stay the run's downscaled forecast.
+      # Both run on the 0.4 degree date (normally a day newer than the ECMWF
+      # date), so their outputs go under that date's folders. The hindcasts are
+      # read from the private gs://sheerwater-datalake/ecmwf-0_4 store with the
+      # credentials of "Auth to Google Cloud" above, so the service account
+      # needs read access to that bucket.
       - name: Generate 0.4 degree precip plots
         if: ${{ steps.detect.outputs.run_downscale != 'false' }}
         continue-on-error: true
@@ -395,7 +429,7 @@ jobs:
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           COUNTRIES: "Kenya"
-          DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
+          DATE_STR: ${{ steps.date_04deg.outputs.date }}
           FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
 
       - name: Perform 0.4 degree downscaling
@@ -406,7 +440,41 @@ jobs:
           python downscale_04deg_.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
+          DATE_STR: ${{ steps.date_04deg.outputs.date }}
+          # the 1.5 degree run whose days extend the rainfall onset forecast
+          ONSET_1P5_DATE: ${{ steps.ecmwf_date.outputs.date }}
+
+      # The run for the day before made the 0.4 degree Kenya downscaling for
+      # this ECMWF date; dowscale_dekade.py's 1.5 degree outputs of the same
+      # names must not replace it in the buckets. Restores it locally if this
+      # run's 0.4 degree downscaling didn't run.
+      - name: Keep published 0.4 degree downscaling
+        if: ${{ steps.detect.outputs.run_downscale != 'false' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          python forecast_04deg_dates.py keep-published \
+            --date "${{ steps.ecmwf_date.outputs.date }}" \
+            --date-04deg "${{ steps.date_04deg.outputs.date }}"
+        env:
+          MAIN_PATH: ${{ github.workspace }}/main_repo/
+
+      # The date the run's Kenya weekly downscaled forecast is under: the 0.4
+      # degree date when that downscaling ran (or was restored), else the ECMWF
+      # date. Everything made from it below (onset, CHIRPS climatology maps,
+      # ws_scripts, briefing) uses this date.
+      - name: Resolve downscaled forecast date
+        id: downscaled_date
+        working-directory: main_repo
+        run: |
+          d04="${{ steps.date_04deg.outputs.date }}"
+          if [ -n "$d04" ] && [ -f "data/$d04/data_weekly_Kenya_downscaled.nc" ]; then
+            d="$d04"
+          else
+            d="${{ steps.ecmwf_date.outputs.date }}"
+          fi
+          echo "Downscaled forecast date: $d"
+          echo "date=$d" >> "$GITHUB_OUTPUT"
 
       - name: Run rainfall onset
         if: ${{ steps.detect.outputs.run_rainfall_onset != 'false' }}
@@ -421,7 +489,7 @@ jobs:
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           COUNTRIES: "Kenya"
-          DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
+          DATE_STR: ${{ steps.downscaled_date.outputs.date }}
 
       # CHIRPS climatology counterparts of the downscaled onset/spell maps
       # (the briefing's "_clim" pictures, Kenya-only). Only the small derived
@@ -447,7 +515,7 @@ jobs:
           COUNTRY=Kenya python chirps_agro_climatology.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
+          DATE_STR: ${{ steps.downscaled_date.outputs.date }}
 
       - name: Save CHIRPS climatology cache
         if: ${{ steps.detect.outputs.run_chirps_climatology != 'false' && hashFiles('main_repo/chirps_clim_cache/**/*.nc') != '' }}
@@ -465,6 +533,7 @@ jobs:
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
+          DOWNSCALED_DATE_STR: ${{ steps.downscaled_date.outputs.date }}
 
       # Great_Horn is fetched because ai_weather_briefing.py is
       # Kenya/Great_Horn-hardcoded while this workflow runs COUNTRIES=Kenya, so
@@ -491,50 +560,56 @@ jobs:
       # and kenya_daily_downscaled_precip.sh read today's downscaled forecast back from
       # gs://${KENYA_BUCKET}, and uploading afterwards made them silently use the previous init.
       # ── Stage Kenya-only plots, downscaled NetCDF, and cropped zarr data ──
+      # For the ECMWF date and, when it differs, the downscaled forecast's (0.4
+      # degree) date.
       - name: Stage Kenya bucket contents
         continue-on-error: true
         working-directory: main_repo
         run: |
-          STAGE_DIR="kenya_bucket_staging/${{ steps.ecmwf_date.outputs.date }}"
-          mkdir -p "$STAGE_DIR"
-          for sub in weekly dekadal monthly; do
-            src="plots/Kenya/${{ steps.ecmwf_date.outputs.date }}/$sub"
-            if [ -d "$src" ]; then
-              mkdir -p "$STAGE_DIR/$sub"
-              cp -r "$src"/. "$STAGE_DIR/$sub/"
+          for d in $(printf '%s\n' "${{ steps.ecmwf_date.outputs.date }}" "${{ steps.downscaled_date.outputs.date }}" | sort -u); do
+            STAGE_DIR="kenya_bucket_staging/$d"
+            mkdir -p "$STAGE_DIR"
+            for sub in weekly dekadal monthly 04deg; do
+              src="plots/Kenya/$d/$sub"
+              if [ -d "$src" ]; then
+                mkdir -p "$STAGE_DIR/$sub"
+                cp -r "$src"/. "$STAGE_DIR/$sub/"
+              fi
+            done
+            mkdir -p "$STAGE_DIR/data"
+            if [ -d "$OUTPUT_DIR/$d/gefs" ]; then
+              mkdir -p "$STAGE_DIR/data/gefs"
+              cp -r "$OUTPUT_DIR/$d/gefs/gefs_kenya.zarr" "$STAGE_DIR/data/gefs/" 2>/dev/null || true
             fi
+            if [ -d "$OUTPUT_DIR/$d/geotifs_kenya" ]; then
+              cp -r "$OUTPUT_DIR/$d/geotifs_kenya" "$STAGE_DIR/data/"
+            fi
+            if [ -d "$OUTPUT_DIR/$d" ]; then
+              find "$OUTPUT_DIR/$d" -maxdepth 1 \
+                -type f -iname '*Kenya*downscaled*.nc' \
+                -exec cp -v {} "$STAGE_DIR/data/" \;
+              find "$OUTPUT_DIR/$d" -maxdepth 1 \
+                -type f -iname 'daily_downscaled_kenya.tif' \
+                -exec cp -v {} "$STAGE_DIR/data/" \;
+            fi
+            python crop_kenya_zarr.py \
+              --data-dir "$OUTPUT_DIR/$d" \
+              --output "$STAGE_DIR/data" || echo "::warning::crop_kenya_zarr.py failed for $d"
           done
-          mkdir -p "$STAGE_DIR/data"
-          if [ -d "$OUTPUT_DIR/${{ steps.ecmwf_date.outputs.date }}/gefs" ]; then
-            mkdir -p "$STAGE_DIR/data/gefs"
-            cp -r "$OUTPUT_DIR/${{ steps.ecmwf_date.outputs.date }}/gefs/gefs_kenya.zarr" "$STAGE_DIR/data/gefs/" 2>/dev/null || true
-          fi
-          if [ -d "$OUTPUT_DIR/${{ steps.ecmwf_date.outputs.date }}/geotifs_kenya" ]; then
-            cp -r "$OUTPUT_DIR/${{ steps.ecmwf_date.outputs.date }}/geotifs_kenya" "$STAGE_DIR/data/"
-          fi
-          if [ -d "$OUTPUT_DIR/${{ steps.ecmwf_date.outputs.date }}" ]; then
-            find "$OUTPUT_DIR/${{ steps.ecmwf_date.outputs.date }}" -maxdepth 1 \
-              -type f -iname '*Kenya*downscaled*.nc' \
-              -exec cp -v {} "$STAGE_DIR/data/" \;
-            find "$OUTPUT_DIR/${{ steps.ecmwf_date.outputs.date }}" -maxdepth 1 \
-              -type f -iname 'daily_downscaled_kenya.tif' \
-              -exec cp -v {} "$STAGE_DIR/data/" \;
-          fi
-          python crop_kenya_zarr.py \
-            --data-dir "$OUTPUT_DIR/${{ steps.ecmwf_date.outputs.date }}" \
-            --output "$STAGE_DIR/data"
 
       # ── Upload Kenya-only bucket contents ─────────────────────────
       - name: Upload to Kenya bucket
         continue-on-error: true
         working-directory: main_repo
         run: |
-          STAGE_DIR="kenya_bucket_staging/${{ steps.ecmwf_date.outputs.date }}"
-          if [ -d "$STAGE_DIR" ]; then
-            gcloud storage rsync -r "$STAGE_DIR" "gs://${KENYA_BUCKET}/${{ steps.ecmwf_date.outputs.date }}" --exclude='.*index\.md$'
-          else
-            echo "No Kenya staging directory found, skipping."
-          fi
+          found=false
+          for STAGE_DIR in kenya_bucket_staging/*/; do
+            [ -d "$STAGE_DIR" ] || continue
+            found=true
+            d=$(basename "$STAGE_DIR")
+            gcloud storage rsync -r "$STAGE_DIR" "gs://${KENYA_BUCKET}/$d" --exclude='.*index\.md$'
+          done
+          $found || echo "No Kenya staging directory found, skipping."
 
       # ── Weather-skills briefing plots (ws_scripts/*.sh) ──────
       - name: Install uv for ws_scripts
@@ -620,7 +695,7 @@ jobs:
         continue-on-error: true
         working-directory: main_repo/ws_scripts
         env:
-          INIT_OVERRIDE: ${{ steps.ecmwf_date.outputs.date }}
+          INIT_OVERRIDE: ${{ steps.downscaled_date.outputs.date }}
           ECMWF_DATASTORES_URL: "https://ecds.ecmwf.int/api"
           ECMWF_DATASTORES_KEY: ${{ secrets.CDSAPI_KEY }}
         run: bash seasonal_progression_vs_analog_years.sh
@@ -672,7 +747,7 @@ jobs:
         continue-on-error: true
         working-directory: main_repo/ws_scripts
         env:
-          INIT_OVERRIDE: ${{ steps.ecmwf_date.outputs.date }}
+          INIT_OVERRIDE: ${{ steps.downscaled_date.outputs.date }}
         run: bash kenya_daily_downscaled_precip.sh
 
       - name: Collect briefing plots
@@ -701,6 +776,8 @@ jobs:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           DATE_STR: ${{ steps.briefing_date.outputs.date }}
           ECMWF_DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
+          DOWNSCALED_DATE_STR: ${{ steps.downscaled_date.outputs.date }}
+          FORECAST_04DEG_DATE_STR: ${{ steps.date_04deg.outputs.date }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           BRIEFING_TEMPLATE_ID: "1zSp3C35PqDfMKbT8WtEcxoG2EoyIAJA5"
 
@@ -864,6 +941,9 @@ jobs:
             main_repo/plots/Kenya/*/dekadal/dekadal_precip.png
             main_repo/plots/Kenya/*/weekly/weekly_precip.png
             main_repo/plots/Kenya/*/weekly/weekly_precip_downscaled_clipped.png
+            main_repo/plots/Kenya/*/weekly/weekly_precip_downscaled.png
+            main_repo/plots/Kenya/*/weekly/chance_of_above_or_below.png
+            main_repo/plots/Kenya/*/04deg/weekly/chance_of_above_or_below.png
             main_repo/plots/Kenya/*/weekly/weekly_medium_range_precip.png
             main_repo/plots/briefing/**/*.png
             main_repo/private_data/**/*.csv
@@ -978,11 +1058,16 @@ jobs:
           iod="plots/briefing/${today_date}/iod_forecast.png"
           [ ! -f "$iod" ] && [ -f "main_repo/$iod" ] && iod="main_repo/$iod"
 
-          ecmwf_dwn="plots/Kenya/${ecmwf_date}/weekly/weekly_precip_downscaled.png"
+          ecmwf_dwn="plots/Kenya/${{ needs.download.outputs.downscaled_date }}/weekly/weekly_precip_downscaled.png"
           [ ! -f "$ecmwf_dwn" ] && [ -f "main_repo/$ecmwf_dwn" ] && ecmwf_dwn="main_repo/$ecmwf_dwn"
 
-          ecmwf_tercile="plots/Kenya/${ecmwf_date}/weekly/chance_of_above_or_below.png"
+          # the 0.4 degree tercile plot when there is one, as in the briefing
+          ecmwf_tercile="plots/Kenya/${{ needs.download.outputs.date_04deg }}/04deg/weekly/chance_of_above_or_below.png"
           [ ! -f "$ecmwf_tercile" ] && [ -f "main_repo/$ecmwf_tercile" ] && ecmwf_tercile="main_repo/$ecmwf_tercile"
+          if [ ! -f "$ecmwf_tercile" ]; then
+            ecmwf_tercile="plots/Kenya/${ecmwf_date}/weekly/chance_of_above_or_below.png"
+            [ ! -f "$ecmwf_tercile" ] && [ -f "main_repo/$ecmwf_tercile" ] && ecmwf_tercile="main_repo/$ecmwf_tercile"
+          fi
 
           list="$analog,$sst,$iod,$ecmwf_dwn,$ecmwf_tercile"
 

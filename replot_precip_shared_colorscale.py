@@ -10,6 +10,10 @@ dowscale_dekade.py for DATE_STR -- it does not re-download or re-run the pipelin
 Downscaled precip is only available on disk for Kenya (weekly + dekadal) and Great_Horn
 (dekadal) -- dowscale_dekade.py never persists Ghana/Ethiopia's downscaled fields to netcdf,
 so those are skipped here.
+
+The Kenya weekly downscaled forecast is downscale_04deg_.py's 0.4 degree one when that ran,
+which is dated by its own (newer) init: DOWNSCALED_DATE_STR (default DATE_STR) is the date
+its file and plots are under. It still shares the color scale of DATE_STR's S2S/GEFS panels.
 """
 import os
 import numpy as np
@@ -33,6 +37,8 @@ else:
 
 prefix = os.environ["MAIN_PATH"]
 data_path = f'{prefix}/data/{date_str}'
+downscaled_date_str = os.environ.get("DOWNSCALED_DATE_STR") or date_str
+downscaled_data_path = f'{prefix}/data/{downscaled_date_str}'
 plots_path = f'{prefix}/plots'
 
 bboxes = {
@@ -136,13 +142,13 @@ try:
     # dekadal code paths (weekly comes out as longitude/latitude/number/step, dekadal as
     # an ensemble mean with no 'number' at all) -- dowscale_dekade.py always transposes
     # right before plotting, so do the same here rather than assume an order.
-    kenya_weekly = _open_downscaled(f'{data_path}/data_weekly_Kenya_downscaled.nc')
+    kenya_weekly = _open_downscaled(f'{downscaled_data_path}/data_weekly_Kenya_downscaled.nc')
     kenya_monthly = (kenya_weekly.isel(step=slice(0, 4)).sum('step', keep_attrs=True)
                       .assign_coords(step=kenya_weekly.isel(step=3).step).expand_dims('step'))
     downscaled_jobs.append(('Kenya', 'weekly', kenya_weekly, WEEKLY_BBOXES['Kenya'],
-                             f'{plots_path}/Kenya/{date_str}/weekly/weekly_precip_downscaled.png'))
+                             f'{plots_path}/Kenya/{downscaled_date_str}/weekly/weekly_precip_downscaled.png'))
     downscaled_jobs.append(('Kenya', 'monthly', kenya_monthly, WEEKLY_BBOXES['Kenya'],
-                             f'{plots_path}/Kenya/{date_str}/monthly/monthly_precip_downscaled.png'))
+                             f'{plots_path}/Kenya/{downscaled_date_str}/monthly/monthly_precip_downscaled.png'))
 except FileNotFoundError as e:
     print(f'  [skip] Kenya weekly/monthly downscaled: {e}')
 

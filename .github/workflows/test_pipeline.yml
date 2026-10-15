@@ -17,7 +17,11 @@ name: Test Pipeline (manual)
 # Dates work like daily_download2.0_kenya_only.yml: date_str is the run/briefing
 # date (BRIEFING_DATE), and the ECMWF/GEFS model date (DATE_STR) is two days
 # earlier. Forecast data and plots/<country>/ use DATE_STR; plots/briefing/,
-# the pptx and the digest use BRIEFING_DATE.
+# the pptx and the digest use BRIEFING_DATE. The 0.4 degree stage runs on the
+# newest 0.4 degree init (DATE_STR_04DEG, normally a day after DATE_STR, see
+# forecast_04deg_dates.py), and the stages made from the Kenya downscaled
+# forecast (onset, CHIRPS climatology, briefing) on DOWNSCALED_DATE: that date
+# when the 0.4 degree downscaling ran, else DATE_STR.
 #
 # A skipped stage
 # pulls its known output for DATE_STR from the (read-only) production GCS
@@ -205,6 +209,18 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Resolve 0.4 degree date
+        working-directory: main_repo
+        run: |
+          d=$(python forecast_04deg_dates.py resolve --run-date "$BRIEFING_DATE" --ecmwf-date "$DATE_STR" || true)
+          [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || d="$DATE_STR"
+          echo "DATE_STR_04DEG=$d" >> "$GITHUB_ENV"
+          # until the 0.4 degree downscaling step below says otherwise
+          echo "DOWNSCALED_DATE=$DATE_STR" >> "$GITHUB_ENV"
+          echo "0.4 degree date $d"
+        env:
+          FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
+
       # ── GCS is read-only here (rsync FROM the bucket only). Drive
       # upload goes to the TEST subfolder, never the live briefing folder
       # root. publish_briefing_to_drive.py refuses --live in Test* workflows. ─────
@@ -378,10 +394,11 @@ jobs:
       # it that way. Only the derived plots (probabilities, EFI/SOT, anomalies,
       # spell lengths: PUBLIC_PLOTS in the script) are copied to
       # plots/<country>/<date>/04deg/, so they end up in the test email's zip
-      # with the rest of plots/. downscale_04deg_.py then overwrites the
-      # Kenya weekly downscaled outputs of the step above under their normal
-      # names -- but only when the forecast for DATE_STR and a hindcast close to
-      # that date are there; otherwise it exits and the 1.5 degree outputs stay.
+      # with the rest of plots/. downscale_04deg_.py then writes the Kenya
+      # weekly downscaled outputs under their normal names -- but only when the
+      # forecast for its date and a hindcast close to that date are there;
+      # otherwise it exits and the 1.5 degree outputs of the step above stay.
+      # Both run on DATE_STR_04DEG, so their outputs go under that date.
       # The hindcasts are read from the private gs://sheerwater-datalake/ecmwf-0_4 store
       # with the credentials of "Auth to Google Cloud" above, so the service
       # account needs read access to that bucket. Nothing to restore from GCS
@@ -394,6 +411,7 @@ jobs:
           python plot_s2s_04deg_.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.DATE_STR_04DEG }}
           FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
 
       - name: Perform 0.4 degree downscaling
@@ -402,8 +420,14 @@ jobs:
         working-directory: main_repo
         run: |
           python downscale_04deg_.py
+          if [ -f "data/$DATE_STR_04DEG/data_weekly_Kenya_downscaled.nc" ]; then
+            echo "DOWNSCALED_DATE=$DATE_STR_04DEG" >> "$GITHUB_ENV"
+          fi
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.DATE_STR_04DEG }}
+          # the 1.5 degree run whose days extend the rainfall onset forecast
+          ONSET_1P5_DATE: ${{ env.DATE_STR }}
 
       - name: Install rclone
         continue-on-error: true
@@ -428,6 +452,7 @@ jobs:
           done
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.DOWNSCALED_DATE }}
 
       - name: Restore rainfall onset plots from GCS
         if: ${{ !inputs.run_rainfall_onset || inputs.skills_only }}
@@ -436,7 +461,7 @@ jobs:
         run: |
           IFS=',' read -ra countries <<< "$COUNTRIES"
           for country in "${countries[@]}"; do
-            src="plots/$country/$DATE_STR/monthly"
+            src="plots/$country/$DOWNSCALED_DATE/monthly"
             mkdir -p "$src"
             gcloud storage rsync -r --no-clobber "gs://${BUCKET}/$src" "$src" || true
           done
@@ -467,6 +492,7 @@ jobs:
           COUNTRY=Kenya python chirps_agro_climatology.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.DOWNSCALED_DATE }}
 
       - name: Save CHIRPS climatology cache
         if: ${{ inputs.run_chirps_climatology && !inputs.skills_only && contains(inputs.countries, 'Kenya') && hashFiles('main_repo/chirps_clim_cache/**/*.nc') != '' }}
@@ -676,10 +702,13 @@ jobs:
         continue-on-error: true
         working-directory: main_repo
         run: |
-          for rel in \
+          for rel in $(printf '%s\n' \
             "plots/Kenya/${DATE_STR}" \
+            "plots/Kenya/${DOWNSCALED_DATE}" \
+            "plots/Kenya/${DATE_STR_04DEG}" \
             "plots/Great_Horn/${DATE_STR}" \
-            "plots/diagnostics/${DATE_STR}"
+            "plots/Great_Horn/${DATE_STR_04DEG}" \
+            "plots/diagnostics/${DATE_STR}" | sort -u)
           do
             mkdir -p "$rel"
             # --no-clobber: only fill gaps, never overwrite plots this run just regenerated
@@ -704,6 +733,8 @@ jobs:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           DATE_STR: ${{ env.BRIEFING_DATE }}
           ECMWF_DATE_STR: ${{ env.DATE_STR }}
+          DOWNSCALED_DATE_STR: ${{ env.DOWNSCALED_DATE }}
+          FORECAST_04DEG_DATE_STR: ${{ env.DATE_STR_04DEG }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           BRIEFING_TEMPLATE_ID: ${{ inputs.use_dev_template && (inputs.dev_template_id || '1McY75NyFK8DsSrJGXfFHLN7EMcQPuTX0') || '1zSp3C35PqDfMKbT8WtEcxoG2EoyIAJA5' }}
           BRIEFING_ALLOW_MISSING_PICTURES: "1"
@@ -736,6 +767,8 @@ jobs:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           DATE_STR: ${{ env.BRIEFING_DATE }}
           ECMWF_DATE_STR: ${{ env.DATE_STR }}
+          DOWNSCALED_DATE_STR: ${{ env.DOWNSCALED_DATE }}
+          FORECAST_04DEG_DATE_STR: ${{ env.DATE_STR_04DEG }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CAPTION_BACKEND: claude
@@ -803,6 +836,7 @@ jobs:
           if-no-files-found: warn
           path: |
             main_repo/plots/**/${{ env.DATE_STR }}/**
+            main_repo/plots/**/${{ env.DATE_STR_04DEG }}/**
             main_repo/plots/briefing/${{ env.BRIEFING_DATE }}/**
             main_repo/prompts/digest_${{ env.BRIEFING_DATE }}.txt
             main_repo/prompts/captions_vision_${{ env.BRIEFING_DATE }}.txt

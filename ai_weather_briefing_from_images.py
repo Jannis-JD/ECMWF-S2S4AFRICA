@@ -36,6 +36,11 @@ else:
         datetime.fromisoformat(date_str) - timedelta(days=ECMWF_LAG_DAYS)
     ).strftime("%Y-%m-%d")
 
+# The downscaled forecast and the 0.4 degree plots are dated by the 0.4 degree init,
+# normally a day newer (see ai_weather_briefing.py and forecast_04deg_dates.py)
+downscaled_date_str = os.environ.get("DOWNSCALED_DATE_STR") or ecmwf_date_str
+forecast_04deg_date_str = os.environ.get("FORECAST_04DEG_DATE_STR") or ecmwf_date_str
+
 with open(f"{prefix}/prompts/image_caption_prompt.md") as f:
     caption_system_prompt = f.read()
 
@@ -52,6 +57,15 @@ plots = ["weekly_precip", "gefs_weekly_precip", "weekly_precip_downscaled",
          "weekly_medium_range_precip", "chance_of_above_or_below", "efi_sot_precip",
          "50th_percentile_exedance", "anomaly_from_50th"]
 plot_paths = {t: f"{prefix}/{kenya_path}/weekly/{p}.png" for t, p in zip(slide_types, plots)}
+plot_dates = {t: ecmwf_date_str for t in slide_types}
+plot_paths["ECMWF_dwn"] = f"{prefix}/plots/Kenya/{downscaled_date_str}/weekly/weekly_precip_downscaled.png"
+plot_dates["ECMWF_dwn"] = downscaled_date_str
+# the briefing shows the 0.4 degree versions of these when they're there (prefer_04deg in
+# ai_weather_briefing.py), so they are the ones captioned
+for t in ("ECMWF_tercile", "ECMWF_efi", "ECMWF_p50", "ECMWF_p50anom"):
+    alt = f"{prefix}/plots/Kenya/{forecast_04deg_date_str}/04deg/weekly/{os.path.basename(plot_paths[t])}"
+    if os.path.exists(alt):
+        plot_paths[t], plot_dates[t] = alt, forecast_04deg_date_str
 
 slide_labels = {
     "ECMWF_raw": "ECMWF S2S weekly precipitation forecast",
@@ -101,11 +115,14 @@ if caption_prompt == "compact":
 
 def caption_request(plot):
     """User-turn text for one plot: context, plus the guide and examples for the compact prompt."""
-    text = f"Context: this is the pipeline's '{slide_labels[plot_slide[plot]]}' output for {ecmwf_date_str}."
+    t = plot_slide[plot]
+    text = f"Context: this is the pipeline's '{slide_labels[t]}' output for {plot_dates[t]}."
+    if "/04deg/" in plot_paths[t]:
+        text += " It is made from the 0.4 degree ECMWF forecast, which covers 4 weeks."
     if caption_prompt != "compact":
         return text
     text += f"\nHow to read this plot: {plot_guide[plot]}"
-    pool = sorted((r for r in reference_captions if r["plot"] == plot and r["date"] != ecmwf_date_str),
+    pool = sorted((r for r in reference_captions if r["plot"] == plot and r["date"] != plot_dates[t]),
                   key=lambda r: r["date"])
     examples = [pool[int(i * len(pool) / 3)] for i in range(3)] if len(pool) > 3 else pool
     if examples:
@@ -182,6 +199,11 @@ if ecmwf_date_str != date_str:
     _ecmwf_lag_note = (
         f"ECMWF / GEFS products are from init {ecmwf_date_str} "
         f"({ECMWF_LAG_DAYS}-day publication lag).\n"
+    )
+if downscaled_date_str != ecmwf_date_str or forecast_04deg_date_str != ecmwf_date_str:
+    _ecmwf_lag_note += (
+        f"The downscaled forecast is from init {downscaled_date_str} and the 0.4 degree ECMWF "
+        f"plots from init {forecast_04deg_date_str}.\n"
     )
 user_prompt = f"""
 Forecast date: {date_str}

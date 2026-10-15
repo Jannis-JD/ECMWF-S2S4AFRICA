@@ -327,13 +327,30 @@ def forecast_files(init):
 ONSET_WEEKLY_FILE = 'data_weekly_Kenya_downscaled_onset.nc'
 
 
+# What downscale_04deg_.py writes now instead: the per-member daily 0.4 degree forecast
+# followed by the 1.5 degree run's days, already split into days. Read as it is when it's
+# there -- the 0.4 degree forecast is a day newer than the 1.5 degree one, so its folder
+# has no ECMWF_s2s_precip_<init>.zarr to split weeks with until the next day's run.
+ONSET_MEMBERS_STORE = 'daily_downscaled_kenya_members_onset.zarr'
+
+
 def downscaled_weekly_path(path):
     onset_path = f'{path}/{ONSET_WEEKLY_FILE}'
     return onset_path if os.path.exists(onset_path) else f'{path}/data_weekly_Kenya_downscaled.nc'
 
 
+def forecast_members(path):
+    """The ensemble member numbers of the downscaled forecast in path."""
+    store = f'{path}/{ONSET_MEMBERS_STORE}'
+    if os.path.isdir(store):
+        return xr.open_zarr(store, consolidated=True).number.values
+    with xr.open_dataset(downscaled_weekly_path(path)) as ds:
+        return ds.number.values
+
+
 def has_forecast(path, init):
-    return all(os.path.exists(f'{path}/{f}') for f in forecast_files(init))
+    return (os.path.isdir(f'{path}/{ONSET_MEMBERS_STORE}')
+            or all(os.path.exists(f'{path}/{f}') for f in forecast_files(init)))
 
 
 def fetch_forecast(init):
@@ -354,12 +371,19 @@ def fetch_forecast(init):
     shutil.rmtree(tmp, ignore_errors=True)
     os.makedirs(tmp)
     try:
-        for f in forecast_files(init):
-            if not fs.exists(f'{remote}/{f}'):
-                raise FileNotFoundError(f'gs://{remote}/{f}')
+        weekly = forecast_files(init)
+        have_weekly = all(fs.exists(f'{remote}/{f}') for f in weekly)
+        # the 6-week forms first, the smaller one before the bigger (members) one
+        if have_weekly and fs.exists(f'{remote}/{ONSET_WEEKLY_FILE}'):
+            wanted = weekly + [ONSET_WEEKLY_FILE]
+        elif fs.exists(f'{remote}/{ONSET_MEMBERS_STORE}'):
+            wanted = [ONSET_MEMBERS_STORE]
+        elif have_weekly:
+            wanted = weekly
+        else:
+            raise FileNotFoundError(f'gs://{remote}/{weekly[0]} + {weekly[1]} or {ONSET_MEMBERS_STORE}')
+        for f in wanted:
             fs.get(f'{remote}/{f}', f'{tmp}/{f}', recursive=True)
-        if fs.exists(f'{remote}/{ONSET_WEEKLY_FILE}'):
-            fs.get(f'{remote}/{ONSET_WEEKLY_FILE}', f'{tmp}/{ONSET_WEEKLY_FILE}')
     except Exception as e:
         print(f"forecast: {init} not available from the bucket ({e})")
         shutil.rmtree(tmp, ignore_errors=True)
@@ -439,7 +463,26 @@ def load_daily_downscaled_forecast(chirps, forecast_date, forecast_path):
 
     Forecast step s covers the 24h ending at init + s, i.e. the rain that falls
     on date init + s - 1 day -- matching CHIRPS's "24h starting at time" label.
+
+    When the folder holds ONSET_MEMBERS_STORE, its members are already split into
+    days (by downscale_04deg_.py, with the 0.4 and 1.5 degree runs' own profiles),
+    and are only interpolated onto the CHIRPS grid.
     """
+    land = chirps.notnull().any('time')
+    store = f'{forecast_path}/{ONSET_MEMBERS_STORE}'
+    if os.path.isdir(store):
+        members = xr.open_zarr(store, consolidated=True)
+        print(f"forecast: {members.sizes['step']} days from {ONSET_MEMBERS_STORE}"
+              + (f" ({members.attrs['forecast_resolution']})" if 'forecast_resolution' in members.attrs else ""))
+        init = pd.Timestamp(members.time.values)
+        for n in members.number.values:
+            daily = members.tp.sel(number=n).load().interp(latitude=chirps.latitude, longitude=chirps.longitude)
+            dates = init + pd.to_timedelta(daily.step.values) - pd.Timedelta(days=1)
+            daily = daily.assign_coords(time=('step', dates)).swap_dims(step='time')
+            daily = daily.drop_vars(['step', 'valid_time', 'number', 'surface', 'year', 'init', 'spatial_ref'], errors='ignore')
+            yield n, daily.transpose('time', 'latitude', 'longitude').where(land)
+        return
+
     weekly_path = downscaled_weekly_path(forecast_path)
     rescaled = xr.open_dataset(weekly_path).load()
     print(f"forecast: {rescaled.sizes['step']} weeks from {os.path.basename(weekly_path)}"
@@ -447,7 +490,6 @@ def load_daily_downscaled_forecast(chirps, forecast_date, forecast_path):
     rescaled = rescaled.interp(latitude=chirps.latitude, longitude=chirps.longitude)
     s2s = xr.open_zarr(f'{forecast_path}/ECMWF_s2s_precip_{forecast_date}.zarr', consolidated=True).compute()
     init = pd.Timestamp(s2s.time.values)
-    land = chirps.notnull().any('time')
 
     for n in rescaled.number.values:
         daily = gef.disaggregate_weekly_to_daily(rescaled.tp.sel(number=n), s2s.tp.sel(number=n),
@@ -568,8 +610,7 @@ else:
 # are paired by number, so both need the same ensemble
 latest_date, latest_path = resolve_latest_forecast(forecast_date if forecast_path else None)
 if latest_path:
-    members = [xr.open_dataset(downscaled_weekly_path(p)).number.values
-               for p in (forecast_path, latest_path)]
+    members = [forecast_members(p) for p in (forecast_path, latest_path)]
     if not np.array_equal(*members):
         print(f"forecast: {forecast_date} and {latest_date} have different members, "
               f"using {forecast_date} alone")
