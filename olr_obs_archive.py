@@ -30,6 +30,11 @@ the same grid as the dynamical forecast and the Planette reforecasts
 (lat 90..-90, lon -180..178.5), plus a `source` (time) coordinate. Days already
 in the archive are skipped, so an interrupted build picks up where it stopped.
 ERA5T days are not re-fetched once ECMWF replaces them with final ERA5.
+
+The archive (these files, rmm_wind_archive.py's and BoM's RMM file) is kept in
+the public gs://africa-forecasting-data/era5/: CI pulls it into olr_obs/, runs
+the daily top-up of both scripts and pushes the changed files back
+(gcloud storage rsync -r both ways, see test_pipeline.yml's olr_waves stage).
 """
 
 import argparse

@@ -5,6 +5,8 @@ name: Test Pipeline (manual)
 # specific_download.yml). Runs the same core stages against a date/country list
 # you choose, and emails you the results directly instead of touching the
 # production GCS bucket, the subscriber sheet, or the main/website branches.
+# (One exception: the olr_waves stage pushes its ERA5 archive top-up back to
+# gs://africa-forecasting-data/era5/.)
 #
 # Each stage can be turned off. Tick skills_only to skip every non-ws_scripts
 # stage (download, plot_s2s, Indian Ocean, climate indices, GEFS, downscale,
@@ -90,6 +92,10 @@ on:
         default: true
       run_chirps_climatology:
         description: "Run CHIRPS onset/spell climatology (Kenya-only)"
+        type: boolean
+        default: true
+      run_olr_waves:
+        description: "OLR tropical wave filtering + MJO OLR/RMM indices (tops up and pushes the ERA5 archive in gs://africa-forecasting-data/era5/)"
         type: boolean
         default: true
       run_briefing_slides:
@@ -181,6 +187,7 @@ jobs:
             stage downscale_04deg     "${{ inputs.run_downscale_04deg }}"
             stage rainfall_onset      "${{ inputs.run_rainfall_onset }}"
             stage chirps_climatology  "${{ inputs.run_chirps_climatology }}"
+            stage olr_waves           "${{ inputs.run_olr_waves }}"
             echo
             echo "briefing_slides=${{ inputs.run_briefing_slides }}, ai_briefing=${{ inputs.run_ai_briefing }}, image_captions=${{ inputs.run_image_captions }} (all unaffected by skills_only)"
           } | tee -a "$GITHUB_STEP_SUMMARY"
@@ -209,7 +216,8 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      # ── GCS is read-only here (rsync FROM the bucket only). Drive
+      # ── GCS is read-only here (rsync FROM the bucket only), except the
+      # ERA5 archive top-up in gs://${BUCKET}/era5/ (olr_waves stage). Drive
       # upload goes to the TEST subfolder, never the live briefing folder
       # root. publish_briefing_to_drive.py refuses --live in Test* workflows. ─────
       - name: Auth to Google Cloud
@@ -429,6 +437,101 @@ jobs:
           DATE_STR: ${{ env.DATE_STR_04DEG }}
           # the 1.5 degree run whose days extend the rainfall onset forecast
           ONSET_1P5_DATE: ${{ env.DATE_STR }}
+
+      # ── Stage: olr_waves (tropical waves + MJO OLR/RMM indices) ──────
+      # Needs the ERA5 archive (daily OLR 2006-now, 15S-15N u850/u200, BoM's
+      # RMM file) that lives in gs://${BUCKET}/era5/: pull it, top it up to
+      # the latest ERA5T day from ARCO (only the missing days), push the
+      # changed files back -- the one place this workflow writes to the
+      # bucket (appending ERA5 days is date-independent and idempotent). The
+      # wave outputs themselves are only emailed. Then the six scripts in
+      # order, on the ECMWF date; their forecast/reforecast come from
+      # dynamical.org and Planette, not from the download stage.
+      - name: Pull ERA5 archive from GCS
+        id: era5_pull
+        if: ${{ inputs.run_olr_waves && !inputs.skills_only }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          mkdir -p olr_obs
+          gcloud storage rsync -r "gs://${BUCKET}/era5" olr_obs
+
+      - name: Top up ERA5 archive
+        if: ${{ steps.era5_pull.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          python olr_obs_archive.py
+          python rmm_wind_archive.py
+
+      # always(): a partly topped-up archive is still worth saving (each
+      # yearly file is written atomically); no deletes, so nothing is lost
+      - name: Push ERA5 archive to GCS
+        if: ${{ always() && steps.era5_pull.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          gcloud storage rsync -r olr_obs "gs://${BUCKET}/era5"
+
+      - name: Download OLR for the wave filtering
+        id: olr_download
+        if: ${{ inputs.run_olr_waves && !inputs.skills_only }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python download_olr_waves.py
+
+      - name: OLR wave anomalies
+        id: olr_anom
+        if: ${{ steps.olr_download.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python olr_wave_anomalies.py
+
+      - name: OLR wave filtering
+        if: ${{ steps.olr_anom.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python olr_wave_filter.py
+
+      - name: MJO OLR index
+        if: ${{ steps.olr_anom.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python mjo_olr_index.py
+
+      - name: Download winds for the RMM index
+        id: rmm_download
+        if: ${{ steps.olr_anom.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python download_rmm_winds.py
+
+      - name: MJO RMM index
+        if: ${{ steps.rmm_download.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python mjo_rmm_index.py
+
+      # The intermediate zarrs (~340 MB a day) are not published: only
+      # plots/olr_waves/<date>/ and data/<date>/mjo_*_index_<date>.nc are.
+      - name: Remove OLR wave intermediates
+        if: ${{ inputs.run_olr_waves && !inputs.skills_only }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          for s in ECMWF_s2s_olr ECMWF_s2s_olr_reforecast olr_anom olr_obs_leadin olr_waves; do
+            rm -rf "data/$DATE_STR/${s}_$DATE_STR.zarr"
+          done
+          rm -f data/$DATE_STR/rmm_u_*_$DATE_STR.nc
+
+      - name: Restore OLR wave plots from GCS
+        if: ${{ !inputs.run_olr_waves || inputs.skills_only }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          src="plots/olr_waves/$DATE_STR"
+          mkdir -p "$src"
+          gcloud storage rsync -r --no-clobber "gs://${BUCKET}/$src" "$src" || true
 
       - name: Install rclone
         continue-on-error: true

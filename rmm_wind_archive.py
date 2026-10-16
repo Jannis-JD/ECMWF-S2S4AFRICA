@@ -29,7 +29,8 @@ Writes one file per year, <OLR_OBS_DIR>/era5_u_15S15N_<YYYY>.nc (default
 olr_obs/), holding `u850` and `u200` (time, longitude) in m s-1 on the S2S
 longitudes (-180..178.5), plus a `source` (time) coordinate. The latitude mean
 is the plain mean of the 21 rows 15N..15S of the 1.5 degree grid, as in WH04.
-Days already in the archive are skipped.
+Days already in the archive are skipped. Kept in gs://africa-forecasting-data/era5/
+with the OLR archive (see olr_obs_archive.py).
 """
 
 import argparse
