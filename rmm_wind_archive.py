@@ -35,19 +35,17 @@ with the OLR archive (see olr_obs_archive.py).
 
 import argparse
 import os
-import shutil
 import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
-from urllib.error import HTTPError
-from urllib.request import urlopen
 
 import numpy as np
 import xarray as xr
 
-from olr_obs_archive import LONS, OUT_DIR, WB2, WB2_LAST_DAY, _OFFSETS, _WEIGHTS, _gcs_exists, _gcs_url, runs
+from olr_obs_archive import (LONS, OUT_DIR, WB2, WB2_LAST_DAY, _OFFSETS, _WEIGHTS, _gcs_exists, _gcs_url,
+                             download, runs)
 
 LEVELS = (850, 200)
 LAT_MAX = 15
@@ -87,20 +85,6 @@ def fetch_wb2(days):
 
 def raw_url(day, level):
     return _gcs_url(f"{ARCO_RAW}/{day:%Y/%m/%d}/{ARCO_VAR}/{level}.nc")
-
-
-def download(url, out, attempts=4):
-    for attempt in range(1, attempts + 1):
-        try:
-            with urlopen(url, timeout=120) as r, open(out, "wb") as f:
-                shutil.copyfileobj(r, f)
-            return
-        except HTTPError:
-            raise
-        except OSError as e:                    # stalled or dropped connection
-            if attempt == attempts:
-                raise
-            print(f"  retrying {url.rsplit('/', 4)[1:]} ({e})", flush=True)
 
 
 def fetch_arco(day):

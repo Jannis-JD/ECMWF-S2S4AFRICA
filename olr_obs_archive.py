@@ -40,7 +40,9 @@ the daily top-up of both scripts and pushes the changed files back
 import argparse
 import json
 import os
+import shutil
 import sys
+import tempfile
 import time
 from datetime import date, datetime, timedelta, timezone
 from urllib.error import HTTPError
@@ -58,6 +60,9 @@ WB2_LAST_DAY = date(2023, 1, 10)
 
 ARCO = "gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
 ARCO_VAR = "top_net_thermal_radiation"
+# ARCO's raw daily files, which the zarr store is built from: they fill the
+# days the store skips (2026-10-10 is missing from it, but not from these)
+ARCO_RAW = "gcp-public-data-arco-era5/raw/date-variable-single_level"
 HOUR0 = np.datetime64("1900-01-01T00", "h")   # ARCO's time index 0
 
 OUT_DIR = os.environ.get("OLR_OBS_DIR", "olr_obs")
@@ -128,14 +133,52 @@ def fetch_arco(arr, days, stride=1):
     hour ending at h. Day D averages the hours valid 00..23 UTC on D, as
     WeatherBench2 does. stride > 1 averages every Nth hour only: every 3rd hour
     is off by ~1.7 W m-2 RMS over 30S-30N (vs ~37 W m-2 day-to-day variability).
+
+    The store can lack some of a day's hours (zarr fills missing chunks with
+    NaN), so also returns which days are complete; the others come out NaN.
     """
     per_day = list(range(0, 24, stride))
     hours = [hour_index(d) + h for d in days for h in per_day]
     raw = arr.oindex[hours, :, :].reshape(len(days), len(per_day), 721, 1440)
-    missing = [str(d) for d, r in zip(days, raw) if np.isnan(r).any()]
-    if missing:
-        raise RuntimeError(f"ARCO has no (or incomplete) TTR for {missing}")
-    return to_s2s_grid(-raw.mean(axis=1) / 3600.0)
+    complete = [not np.isnan(r).any() for r in raw]
+    return to_s2s_grid(-raw.mean(axis=1) / 3600.0), complete
+
+
+def fetch_arco_raw(day):
+    """Daily-mean OLR for one day from ARCO's raw daily file (24 hourly 0.25 degree
+    fields, laid out as the zarr store), shape (121, 240); None if ARCO has not
+    posted it or it is incomplete."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "ttr.nc")
+        try:
+            download(_gcs_url(f"{ARCO_RAW}/{day:%Y/%m/%d}/{ARCO_VAR}/surface.nc"), path)
+        except HTTPError as e:
+            if e.code == 404:
+                return None
+            raise
+        with xr.open_dataset(path) as ds:
+            ttr = ds["ttr"].squeeze(drop=True)
+            hours = np.arange(np.datetime64(day, "h"), np.datetime64(day + timedelta(days=1), "h"))
+            assert ttr.shape == (24, 721, 1440) and ttr.latitude[0] == 90 and ttr.longitude[0] == 0
+            assert (ttr.valid_time.values.astype("datetime64[h]") == hours).all()
+            x = ttr.values
+    if np.isnan(x).any():
+        return None
+    return to_s2s_grid(-x.mean(axis=0) / 3600.0)
+
+
+def download(url, out, attempts=4):
+    for attempt in range(1, attempts + 1):
+        try:
+            with urlopen(url, timeout=120) as r, open(out, "wb") as f:
+                shutil.copyfileobj(r, f)
+            return
+        except HTTPError:
+            raise
+        except OSError as e:                    # stalled or dropped connection
+            if attempt == attempts:
+                raise
+            print(f"  retrying {url.rsplit('/', 4)[1:]} ({e})", flush=True)
 
 
 def _gcs_url(path):
@@ -208,9 +251,10 @@ def write_days(days, olr, sources):
         "units": "W m-2",
         "long_name": "Outgoing longwave radiation (daily mean of the hourly fields valid 00-23 UTC)",
         "comment": "-1 x ERA5 top net thermal radiation. source=wb2: WeatherBench2 era5_daily "
-                   "(conservative regrid); source=arco: ARCO-ERA5 hourly, box-averaged from 0.25 degree",
+                   "(conservative regrid); source=arco: ARCO-ERA5 hourly, box-averaged from 0.25 degree; "
+                   "source=arco_raw: the same from ARCO's raw daily file, for days its zarr store lacks",
     }
-    new.attrs = {"sources": f"gs://{WB2} ; gs://{ARCO}",
+    new.attrs = {"sources": f"gs://{WB2} ; gs://{ARCO} ; gs://{ARCO_RAW}",
                  "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     os.makedirs(OUT_DIR, exist_ok=True)
     tmp = path + ".tmp"
@@ -268,18 +312,41 @@ def main():
     arr = open_arco(args.concurrency)
     t0, done = time.time(), 0
     for run in runs(arco_days):
-        pending_days, pending = [], []
+        pending_days, pending, pending_sources = [], [], []
         for i in range(0, len(run), args.batch_days):
             batch = run[i:i + args.batch_days]
-            pending.append(fetch_arco(arr, batch, args.hour_stride))
+            olr, complete = fetch_arco(arr, batch, args.hour_stride)
+            sources = ["arco"] * len(batch)
+            gap = None
+            for j, day in enumerate(batch):
+                if complete[j]:
+                    continue
+                raw = fetch_arco_raw(day)
+                if raw is None:
+                    gap = j
+                    break
+                print(f"  {day}: incomplete in the ARCO store, filled from its raw daily file", flush=True)
+                olr[j], sources[j] = raw, "arco_raw"
+            if gap is not None:
+                # stop at the gap: later days would leave a hole the next run skips past
+                pending.append(olr[:gap])
+                pending_days += batch[:gap]
+                pending_sources += sources[:gap]
+                if pending_days:
+                    write_days(pending_days, np.concatenate(pending), pending_sources)
+                print(f"WARNING: ARCO has no complete TTR for {batch[gap]} (store or raw file); the "
+                      f"archive stops the day before, the rest is retried next run", flush=True)
+                return
+            pending.append(olr)
             pending_days += batch
+            pending_sources += sources
             done += len(batch)
             rate = done / (time.time() - t0)
             print(f"  {batch[-1]}  {done}/{len(arco_days)} ARCO days, {rate * 60:.1f} days/min "
                   f"(~{(len(arco_days) - done) / rate / 60:.0f} min left)", flush=True)
             if len(pending_days) >= args.checkpoint_days or batch[-1] == run[-1]:
-                write_days(pending_days, np.concatenate(pending), ["arco"] * len(pending_days))
-                pending_days, pending = [], []
+                write_days(pending_days, np.concatenate(pending), pending_sources)
+                pending_days, pending, pending_sources = [], [], []
 
 
 if __name__ == "__main__":
