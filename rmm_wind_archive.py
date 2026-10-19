@@ -34,9 +34,11 @@ with the OLR archive (see olr_obs_archive.py).
 """
 
 import argparse
+import faulthandler
 import os
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -59,6 +61,10 @@ _ROWS = slice(int((90 - LAT_MAX) / 0.25) - 3, int((90 + LAT_MAX) / 0.25) + 4)
 _ROW_W = np.ones(_ROWS.stop - _ROWS.start)
 _ROW_W[[0, -1]] = 0.5
 _ROW_W /= _ROW_W.sum()
+
+# The downloads run in parallel, but the netCDF/HDF5 C libraries are not
+# thread-safe: concurrent reads crashed the daily top-up (double free / bus error)
+_READ_LOCK = threading.Lock()
 
 
 # ============================================================
@@ -95,7 +101,7 @@ def fetch_arco(day):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "u.nc")
             download(raw_url(day, level), path)
-            with xr.open_dataset(path) as ds:
+            with _READ_LOCK, xr.open_dataset(path) as ds:
                 u = ds["u"].squeeze(drop=True)          # the newer files carry a one-level dimension
                 assert u.shape == (24, 721, 1440) and u.latitude[0] == 90 and u.longitude[0] == 0
                 x = u.isel(latitude=_ROWS).values       # (hour, row, 1440)
@@ -184,7 +190,7 @@ def main():
     wb2_days = [d for d in todo if d <= WB2_LAST_DAY]
     arco_days = [d for d in todo if d > WB2_LAST_DAY]
     print(f"ERA5 15S-15N wind archive {OUT_DIR}/: {len(have)} days present; fetching {len(wb2_days)} days "
-          f"from WeatherBench2 and {len(arco_days)} from ARCO ({start} .. {end})")
+          f"from WeatherBench2 and {len(arco_days)} from ARCO ({start} .. {end})", flush=True)
 
     # WeatherBench2: one request per year
     for run in runs(wb2_days):
@@ -205,4 +211,5 @@ def main():
 
 
 if __name__ == "__main__":
+    faulthandler.enable()                       # a native crash still prints the Python traceback
     main()
