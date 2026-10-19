@@ -10,6 +10,12 @@ Usage:
     python run_local_test.py                        # build sandbox + run the full pipeline
     python run_local_test.py --skip plot_gefs,ai_weather_briefing
     python run_local_test.py --date 2026-08-01
+    python run_local_test.py --date 2026-10-05 --date-04deg 2026-10-06
+
+--date-04deg runs the 0.4 degree stages on a newer init than --date, as the daily
+workflow does (the 0.4 degree forecast comes out a day before the 1.5 degree one):
+their outputs, and the onset / CHIRPS climatology made from the Kenya downscaled
+forecast, then go under that date, and the briefing mixes the two dates.
 """
 import argparse
 import os
@@ -30,8 +36,9 @@ STAGES = [
     "plot_gefs",
     "dowscale_dekade",
     # 0.4 degree precip: plot_s2s_04deg_ downloads the forecast (network) and plots it,
-    # downscale_04deg_ then replaces dowscale_dekade's Kenya weekly outputs when the
-    # forecast and a matching hindcast are there
+    # downscale_04deg_ then writes the Kenya weekly downscaled outputs for --date-04deg
+    # (replacing dowscale_dekade's when that's --date) when the forecast and a matching
+    # hindcast are there
     "plot_s2s_04deg_",
     "downscale_04deg_",
     "run_rainfall_onset",
@@ -110,7 +117,29 @@ def load_env_file(env, path):
         env[key.strip()] = value.strip()
 
 
-def run(date, skip):
+# stages that run on the 0.4 degree date, and those that run on the date the Kenya
+# downscaled forecast ended up under (see stage_env)
+STAGES_04DEG = {"plot_s2s_04deg_", "downscale_04deg_"}
+STAGES_DOWNSCALED = {"run_rainfall_onset", "chirps_agro_climatology"}
+
+
+def stage_env(env, name, date, date_04deg):
+    """env for one stage: the per-stage dates the daily workflow passes."""
+    env = dict(env)
+    # downscale_04deg_.py's output is there only when it ran; else it's dowscale_dekade.py's
+    downscaled = date_04deg if (SANDBOX / "data" / date_04deg / "data_weekly_Kenya_downscaled.nc").is_file() else date
+    if name in STAGES_04DEG:
+        env["DATE_STR"] = date_04deg
+        env["ONSET_1P5_DATE"] = date
+    elif name in STAGES_DOWNSCALED:
+        env["DATE_STR"] = downscaled
+    env["DOWNSCALED_DATE_STR"] = downscaled
+    env["FORECAST_04DEG_DATE_STR"] = date_04deg
+    return env
+
+
+def run(date, skip, date_04deg=None):
+    date_04deg = date_04deg or date
     env = os.environ.copy()
     load_env_file(env, TEST_DIR / ".env")
 
@@ -129,7 +158,7 @@ def run(date, skip):
             continue
         script = REPO_ROOT / f"{name}.py"
         print(f"[run ] {name}.py")
-        proc = subprocess.run([sys.executable, str(script)], cwd=SANDBOX, env=env)
+        proc = subprocess.run([sys.executable, str(script)], cwd=SANDBOX, env=stage_env(env, name, date, date_04deg))
         results[name] = proc.returncode
         status = "OK" if proc.returncode == 0 else f"FAILED (exit {proc.returncode})"
         print(f"       -> {status}")
@@ -148,6 +177,8 @@ def run(date, skip):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--date", help="Fixture date (YYYY-MM-DD) under test/. Defaults to the single date folder found there.")
+    parser.add_argument("--date-04deg", help="Init date for the 0.4 degree stages (default --date). Needn't have a "
+                        "fixture folder: plot_s2s_04deg_ downloads that forecast from CHC.")
     parser.add_argument("--setup-only", action="store_true", help="Only build the test/run/ sandbox; don't execute any pipeline scripts.")
     parser.add_argument("--skip", default="", help=f"Comma-separated stage names to skip: {','.join(STAGES)}")
     args = parser.parse_args()
@@ -160,7 +191,7 @@ def main():
         return
 
     skip = {s.strip() for s in args.skip.split(",") if s.strip()}
-    run(date, skip)
+    run(date, skip, args.date_04deg)
 
 
 if __name__ == "__main__":

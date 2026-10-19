@@ -36,7 +36,7 @@ updated automatically every day at **00:16 UTC**.
 ### Countries covered
 
 `Angola` · `Botswana` · `Ethiopia` · `Ghana` · `Kenya`
-`Madagascar` · `Namibia` · `Senegal` · `Zambia`
+`Madagascar` · `Namibia` · `Senegal` · `Somalia` · `Zambia`
 
 ---
 

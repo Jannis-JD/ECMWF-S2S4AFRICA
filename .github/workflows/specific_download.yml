@@ -70,7 +70,7 @@ jobs:
           uv run fetch_dynamical.py \
             --dataset noaa-gefs-forecast-35-day\
             --date ${{ inputs.date_str }} \
-            --countries "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn"\
+            --countries "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn,Somalia"\
             --variable precipitation_surface \
             --output ./data/${{ inputs.date_str }}/gefs/
 
@@ -82,7 +82,7 @@ jobs:
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           WEBSITE_PATH: ${{ github.workspace }}/website_branch/
-          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn"
+          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn,Somalia"
           AI_ACTIVE: 'True'
           DATE_STR: "${{ inputs.date_str }}"
 
@@ -102,7 +102,7 @@ jobs:
           python plot_gefs.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn"
+          COUNTRIES: "Namibia,Botswana,Kenya,Zambia,Madagascar,Angola,Ghana,Senegal,Ethiopia,Zimbabwe,Malawi,Great_Horn,Somalia"
           DATE_STR: "${{ inputs.date_str }}"
 
       - name: Perform downscaling
@@ -112,7 +112,7 @@ jobs:
           python dowscale_dekade.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          DEKADE_COUNTRIES: "Kenya,Great_Horn,Ethiopia"
+          DEKADE_COUNTRIES: "Kenya,Great_Horn,Ethiopia,Somalia"
           WEEK_COUNTRIES: "Kenya,Ghana"
           DATE_STR: "${{ inputs.date_str }}"
 
@@ -148,7 +148,10 @@ jobs:
       # are there; otherwise it exits and the 1.5 degree outputs stay. The
       # hindcasts are read from the private gs://sheerwater-datalake/ecmwf-0_4
       # store with the credentials of "Auth to Google Cloud" above, so the
-      # service account needs read access to that bucket.
+      # service account needs read access to that bucket. A backfill uses the
+      # input date for the 0.4 degree products too (the daily workflows use the
+      # newer 0.4 degree init, see forecast_04deg_dates.py), so the Kenya
+      # downscaling, onset and briefing all stay on that one date here.
       - name: Generate 0.4 degree precip plots
         continue-on-error: true
         working-directory: main_repo
@@ -156,7 +159,7 @@ jobs:
           python plot_s2s_04deg_.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
-          COUNTRIES: "Kenya,Ethiopia,Great_Horn"
+          COUNTRIES: "Kenya,Ethiopia,Great_Horn,Somalia"
           DATE_STR: "${{ inputs.date_str }}"
           FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
 
@@ -167,6 +170,95 @@ jobs:
           python downscale_04deg_.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: "${{ inputs.date_str }}"
+
+      # ── OLR tropical waves + MJO OLR/RMM indices ─────────────────────
+      # Needs the ERA5 archive (daily OLR 2006-now, 15S-15N u850/u200, BoM's
+      # RMM file) kept in gs://${BUCKET}/era5/: pull it, top it up to the
+      # latest ERA5T day from ARCO (only the missing days), push the changed
+      # files back (appending ERA5 days is date-independent and idempotent).
+      # Then the six scripts in order, on the ECMWF date; their forecast and
+      # reforecast come from dynamical.org and Planette, not from the download
+      # above. Only plots/olr_waves/<date>/ and data/<date>/mjo_*_index_<date>.nc
+      # are published: the ~340 MB of intermediate zarrs are removed.
+      - name: Pull ERA5 archive from GCS
+        id: era5_pull
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          mkdir -p olr_obs
+          gcloud storage rsync -r "gs://${BUCKET}/era5" olr_obs
+
+      - name: Top up ERA5 archive
+        if: ${{ steps.era5_pull.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          python olr_obs_archive.py
+          python rmm_wind_archive.py
+
+      # always(): a partly topped-up archive is still worth saving (each
+      # yearly file is written atomically); no deletes, so nothing is lost
+      - name: Push ERA5 archive to GCS
+        if: ${{ always() && steps.era5_pull.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          gcloud storage rsync -r olr_obs "gs://${BUCKET}/era5"
+
+      - name: Download OLR for the wave filtering
+        id: olr_download
+        continue-on-error: true
+        working-directory: main_repo
+        run: python download_olr_waves.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      - name: OLR wave anomalies
+        id: olr_anom
+        if: ${{ steps.olr_download.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python olr_wave_anomalies.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      - name: OLR wave filtering
+        if: ${{ steps.olr_anom.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python olr_wave_filter.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      - name: Download winds for the RMM index
+        id: rmm_download
+        if: ${{ steps.olr_anom.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python download_rmm_winds.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      - name: MJO RMM index
+        if: ${{ steps.rmm_download.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python mjo_rmm_index.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      # keep the intermediates out of the zarr upload below
+      - name: Remove OLR wave intermediates
+        if: ${{ always() }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          for s in ECMWF_s2s_olr ECMWF_s2s_olr_reforecast olr_anom olr_obs_leadin olr_waves; do
+            rm -rf "data/$DATE_STR/${s}_$DATE_STR.zarr"
+          done
+          rm -f data/$DATE_STR/rmm_u_*_$DATE_STR.nc
+        env:
           DATE_STR: "${{ inputs.date_str }}"
 
       - name: Install rclone
@@ -287,6 +379,13 @@ jobs:
             find "$OUTPUT_DIR" -type d -iname "*.zarr" -prune -o -type f \
               ! -iname "*.nc" ! -iname "*.grib" ! -iname "*.idx" ! -iname "*.md" \
               -print | while read -r file_path; do
+              rel_path="${file_path#"$OUTPUT_DIR"/}"
+              echo "Uploading $file_path -> gs://${BUCKET}/data/${rel_path}"
+              gcloud storage cp "$file_path" "gs://${BUCKET}/data/${rel_path}"
+              echo "data/${rel_path}" >> ../uploaded_data.txt
+            done
+            # The MJO indices are the one .nc output published (olr_waves stage).
+            find "$OUTPUT_DIR" -type f -name "mjo_*_index_*.nc" | while read -r file_path; do
               rel_path="${file_path#"$OUTPUT_DIR"/}"
               echo "Uploading $file_path -> gs://${BUCKET}/data/${rel_path}"
               gcloud storage cp "$file_path" "gs://${BUCKET}/data/${rel_path}"

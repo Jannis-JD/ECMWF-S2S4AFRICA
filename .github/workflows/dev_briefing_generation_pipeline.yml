@@ -362,6 +362,10 @@ jobs:
           python plot_s2s.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          # plot_s2s.py requires WEBSITE_PATH to write its ncdf_data/ netCDFs.
+          # This dev run never checks out or commits to the website branch,
+          # so point it at a throwaway dir (plot_s2s.py creates it).
+          WEBSITE_PATH: ${{ runner.temp }}/website_branch/
           COUNTRIES: "Kenya"
           AI_ACTIVE: 'True'
           DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
@@ -480,6 +484,38 @@ jobs:
           mkdir -p "plots/Great_Horn/${DATE_STR}" "plots/briefing/${BRIEFING_DATE}"
           gcloud storage rsync -r "gs://${BUCKET}/plots/Great_Horn/${DATE_STR}" "plots/Great_Horn/${DATE_STR}" || true
           # dont sync all plots so failures are clearly visible
+
+      # The production runs date the 0.4 degree products, and the Kenya weekly
+      # downscaled forecast made from them (with its onset and CHIRPS
+      # climatology maps), by the 0.4 degree init: normally a day newer than the
+      # ECMWF date (see forecast_04deg_dates.py). This workflow doesn't run the
+      # 0.4 degree steps, so the briefing uses the published ones when the
+      # Kenya bucket has them for that date, and this run's 1.5 degree ones
+      # otherwise.
+      - name: Top up published 0.4 degree products from GCS
+        id: dates_04deg
+        continue-on-error: true
+        working-directory: main_repo
+        env:
+          DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
+          RUN_DATE: ${{ steps.briefing_date.outputs.date }}
+          FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
+        run: |
+          d04=$(python forecast_04deg_dates.py resolve --run-date "$RUN_DATE" --ecmwf-date "$DATE_STR" || true)
+          [[ "$d04" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || d04="$DATE_STR"
+          dwn="$DATE_STR"
+          if [ "$d04" != "$DATE_STR" ]; then
+            for c in Kenya Great_Horn; do
+              mkdir -p "plots/$c/$d04"
+              gcloud storage rsync -r "gs://${BUCKET}/plots/$c/$d04" "plots/$c/$d04" || true
+            done
+            if gcloud storage ls "gs://${KENYA_BUCKET}/$d04/data/data_weekly_Kenya_downscaled.nc" >/dev/null 2>&1; then
+              dwn="$d04"
+            fi
+          fi
+          echo "0.4 degree date $d04; downscaled forecast date $dwn"
+          echo "date_04deg=$d04" >> "$GITHUB_OUTPUT"
+          echo "downscaled_date=$dwn" >> "$GITHUB_OUTPUT"
 
       # ── Weather-skills briefing plots (ws_scripts/*.sh) ──────
       - name: Install uv for ws_scripts
@@ -635,6 +671,8 @@ jobs:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           DATE_STR: ${{ steps.briefing_date.outputs.date }}
           ECMWF_DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
+          DOWNSCALED_DATE_STR: ${{ steps.dates_04deg.outputs.downscaled_date }}
+          FORECAST_04DEG_DATE_STR: ${{ steps.dates_04deg.outputs.date_04deg }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           BRIEFING_TEMPLATE_ID: ${{ env.DEV_BRIEFING_TEMPLATE_ID }}
           BRIEFING_ALLOW_MISSING_PICTURES: "1"

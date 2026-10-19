@@ -88,6 +88,7 @@ bboxes = {
     "Great_Horn": {"lat1": 25.5,  "lon1": 19.5, "lat2": -9,    "lon2": 57},
     "Zimbabwe":   {"lat1": -15,   "lon1": 25,   "lat2": -22.5, "lon2": 33.5},
     "Malawi":     {"lat1": -9,    "lon1": 31.5, "lat2": -18,   "lon2": 37.5},
+    "Somalia":    {"lat1": 13.5,  "lon1": 40.5, "lat2": -3,    "lon2": 52.5},
 }
 bbox = bboxes[country]
 
@@ -128,8 +129,14 @@ def forecast_horizon_days(for_onset=False):
     product), read from this date's file when it's there -- the same number
     dowscale_dekade.py passes calendar_windows as max_lead_days. for_onset:
     the horizon run_rainfall_onset.py works with, which is longer when the
-    weekly product is the 4-week 0.4 degree one (downscale_04deg_.py then keeps
-    the 1.5 degree weeks 5-6 in data_weekly_Kenya_downscaled_onset.nc)."""
+    weekly product is the 4-week 0.4 degree one (downscale_04deg_.py then
+    continues it with the 1.5 degree run's days in
+    daily_downscaled_kenya_members_onset.zarr; older dates have the weekly
+    data_weekly_Kenya_downscaled_onset.nc instead)."""
+    members_onset_path = f'{data_path}/daily_downscaled_kenya_members_onset.zarr'
+    if for_onset and os.path.isdir(members_onset_path):
+        with xr.open_zarr(members_onset_path, consolidated=True) as ds:
+            return int(ds.step.values[-1] / np.timedelta64(1, 'D'))
     path = f'{data_path}/data_weekly_Kenya_downscaled.nc'
     onset_path = f'{data_path}/data_weekly_Kenya_downscaled_onset.nc'
     if for_onset and os.path.exists(onset_path):

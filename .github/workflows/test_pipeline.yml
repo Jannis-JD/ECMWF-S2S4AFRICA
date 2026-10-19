@@ -5,6 +5,8 @@ name: Test Pipeline (manual)
 # specific_download.yml). Runs the same core stages against a date/country list
 # you choose, and emails you the results directly instead of touching the
 # production GCS bucket, the subscriber sheet, or the main/website branches.
+# (One exception: the olr_waves stage pushes its ERA5 archive top-up back to
+# gs://africa-forecasting-data/era5/.)
 #
 # Each stage can be turned off. Tick skills_only to skip every non-ws_scripts
 # stage (download, plot_s2s, Indian Ocean, climate indices, GEFS, downscale,
@@ -17,7 +19,11 @@ name: Test Pipeline (manual)
 # Dates work like daily_download2.0_kenya_only.yml: date_str is the run/briefing
 # date (BRIEFING_DATE), and the ECMWF/GEFS model date (DATE_STR) is two days
 # earlier. Forecast data and plots/<country>/ use DATE_STR; plots/briefing/,
-# the pptx and the digest use BRIEFING_DATE.
+# the pptx and the digest use BRIEFING_DATE. The 0.4 degree stage runs on the
+# newest 0.4 degree init (DATE_STR_04DEG, normally a day after DATE_STR, see
+# forecast_04deg_dates.py), and the stages made from the Kenya downscaled
+# forecast (onset, CHIRPS climatology, briefing) on DOWNSCALED_DATE: that date
+# when the 0.4 degree downscaling ran, else DATE_STR.
 #
 # A skipped stage
 # pulls its known output for DATE_STR from the (read-only) production GCS
@@ -88,6 +94,10 @@ on:
         description: "Run CHIRPS onset/spell climatology (Kenya-only)"
         type: boolean
         default: true
+      run_olr_waves:
+        description: "OLR tropical wave filtering + MJO OLR/RMM indices (tops up and pushes the ERA5 archive in gs://africa-forecasting-data/era5/)"
+        type: boolean
+        default: true
       run_briefing_slides:
         description: "Run ws_scripts briefing slides (Kenya-only). Filtered by ws_scripts when that box is filled."
         type: boolean
@@ -98,6 +108,10 @@ on:
         default: ""
       run_ai_briefing:
         description: "Generate AI weather briefing (Kenya/Great_Horn-only, ignores countries input)"
+        type: boolean
+        default: true
+      run_image_captions:
+        description: "Caption the 8 Kenya slide plots with Claude Sonnet (ai_weather_briefing_from_images.py, uses the CLAUDE_CODE_OAUTH_TOKEN secret) and put the captions in the email"
         type: boolean
         default: true
       use_dev_template:
@@ -173,8 +187,9 @@ jobs:
             stage downscale_04deg     "${{ inputs.run_downscale_04deg }}"
             stage rainfall_onset      "${{ inputs.run_rainfall_onset }}"
             stage chirps_climatology  "${{ inputs.run_chirps_climatology }}"
+            stage olr_waves           "${{ inputs.run_olr_waves }}"
             echo
-            echo "briefing_slides=${{ inputs.run_briefing_slides }}, ai_briefing=${{ inputs.run_ai_briefing }} (both unaffected by skills_only)"
+            echo "briefing_slides=${{ inputs.run_briefing_slides }}, ai_briefing=${{ inputs.run_ai_briefing }}, image_captions=${{ inputs.run_image_captions }} (all unaffected by skills_only)"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Checkout repo
@@ -201,7 +216,8 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      # ── GCS is read-only here (rsync FROM the bucket only). Drive
+      # ── GCS is read-only here (rsync FROM the bucket only), except the
+      # ERA5 archive top-up in gs://${BUCKET}/era5/ (olr_waves stage). Drive
       # upload goes to the TEST subfolder, never the live briefing folder
       # root. publish_briefing_to_drive.py refuses --live in Test* workflows. ─────
       - name: Auth to Google Cloud
@@ -216,6 +232,19 @@ jobs:
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
+
+      # after the auth above: it also looks in the private archive of CHC files
+      - name: Resolve 0.4 degree date
+        working-directory: main_repo
+        run: |
+          d=$(python forecast_04deg_dates.py resolve --run-date "$BRIEFING_DATE" --ecmwf-date "$DATE_STR" || true)
+          [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || d="$DATE_STR"
+          echo "DATE_STR_04DEG=$d" >> "$GITHUB_ENV"
+          # until the 0.4 degree downscaling step below says otherwise
+          echo "DOWNSCALED_DATE=$DATE_STR" >> "$GITHUB_ENV"
+          echo "0.4 degree date $d"
+        env:
+          FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
 
       # ── Stage: download ────────────────────────────────────────────
       - name: Run download script
@@ -374,10 +403,11 @@ jobs:
       # it that way. Only the derived plots (probabilities, EFI/SOT, anomalies,
       # spell lengths: PUBLIC_PLOTS in the script) are copied to
       # plots/<country>/<date>/04deg/, so they end up in the test email's zip
-      # with the rest of plots/. downscale_04deg_.py then overwrites the
-      # Kenya weekly downscaled outputs of the step above under their normal
-      # names -- but only when the forecast for DATE_STR and a hindcast close to
-      # that date are there; otherwise it exits and the 1.5 degree outputs stay.
+      # with the rest of plots/. downscale_04deg_.py then writes the Kenya
+      # weekly downscaled outputs under their normal names -- but only when the
+      # forecast for its date and a hindcast close to that date are there;
+      # otherwise it exits and the 1.5 degree outputs of the step above stay.
+      # Both run on DATE_STR_04DEG, so their outputs go under that date.
       # The hindcasts are read from the private gs://sheerwater-datalake/ecmwf-0_4 store
       # with the credentials of "Auth to Google Cloud" above, so the service
       # account needs read access to that bucket. Nothing to restore from GCS
@@ -390,6 +420,7 @@ jobs:
           python plot_s2s_04deg_.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.DATE_STR_04DEG }}
           FORECAST_04DEG_URL: ${{ secrets.FORECAST_04DEG_URL }}
 
       - name: Perform 0.4 degree downscaling
@@ -398,8 +429,103 @@ jobs:
         working-directory: main_repo
         run: |
           python downscale_04deg_.py
+          if [ -f "data/$DATE_STR_04DEG/data_weekly_Kenya_downscaled.nc" ]; then
+            echo "DOWNSCALED_DATE=$DATE_STR_04DEG" >> "$GITHUB_ENV"
+          fi
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.DATE_STR_04DEG }}
+          # the 1.5 degree run whose days extend the rainfall onset forecast
+          ONSET_1P5_DATE: ${{ env.DATE_STR }}
+
+      # ── Stage: olr_waves (tropical waves + MJO OLR/RMM indices) ──────
+      # Needs the ERA5 archive (daily OLR 2006-now, 15S-15N u850/u200, BoM's
+      # RMM file) that lives in gs://${BUCKET}/era5/: pull it, top it up to
+      # the latest ERA5T day from ARCO (only the missing days), push the
+      # changed files back -- the one place this workflow writes to the
+      # bucket (appending ERA5 days is date-independent and idempotent). The
+      # wave outputs themselves are only emailed. Then the six scripts in
+      # order, on the ECMWF date; their forecast/reforecast come from
+      # dynamical.org and Planette, not from the download stage.
+      - name: Pull ERA5 archive from GCS
+        id: era5_pull
+        if: ${{ inputs.run_olr_waves && !inputs.skills_only }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          mkdir -p olr_obs
+          gcloud storage rsync -r "gs://${BUCKET}/era5" olr_obs
+
+      - name: Top up ERA5 archive
+        if: ${{ steps.era5_pull.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          python olr_obs_archive.py
+          python rmm_wind_archive.py
+
+      # always(): a partly topped-up archive is still worth saving (each
+      # yearly file is written atomically); no deletes, so nothing is lost
+      - name: Push ERA5 archive to GCS
+        if: ${{ always() && steps.era5_pull.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          gcloud storage rsync -r olr_obs "gs://${BUCKET}/era5"
+
+      - name: Download OLR for the wave filtering
+        id: olr_download
+        if: ${{ inputs.run_olr_waves && !inputs.skills_only }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python download_olr_waves.py
+
+      - name: OLR wave anomalies
+        id: olr_anom
+        if: ${{ steps.olr_download.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python olr_wave_anomalies.py
+
+      - name: OLR wave filtering
+        if: ${{ steps.olr_anom.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python olr_wave_filter.py
+
+      - name: Download winds for the RMM index
+        id: rmm_download
+        if: ${{ steps.olr_anom.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python download_rmm_winds.py
+
+      - name: MJO RMM index
+        if: ${{ steps.rmm_download.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python mjo_rmm_index.py
+
+      # The intermediate zarrs (~340 MB a day) are not published: only
+      # plots/olr_waves/<date>/ and data/<date>/mjo_*_index_<date>.nc are.
+      - name: Remove OLR wave intermediates
+        if: ${{ inputs.run_olr_waves && !inputs.skills_only }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          for s in ECMWF_s2s_olr ECMWF_s2s_olr_reforecast olr_anom olr_obs_leadin olr_waves; do
+            rm -rf "data/$DATE_STR/${s}_$DATE_STR.zarr"
+          done
+          rm -f data/$DATE_STR/rmm_u_*_$DATE_STR.nc
+
+      - name: Restore OLR wave plots from GCS
+        if: ${{ !inputs.run_olr_waves || inputs.skills_only }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          src="plots/olr_waves/$DATE_STR"
+          mkdir -p "$src"
+          gcloud storage rsync -r --no-clobber "gs://${BUCKET}/$src" "$src" || true
 
       - name: Install rclone
         continue-on-error: true
@@ -424,6 +550,7 @@ jobs:
           done
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.DOWNSCALED_DATE }}
 
       - name: Restore rainfall onset plots from GCS
         if: ${{ !inputs.run_rainfall_onset || inputs.skills_only }}
@@ -432,7 +559,7 @@ jobs:
         run: |
           IFS=',' read -ra countries <<< "$COUNTRIES"
           for country in "${countries[@]}"; do
-            src="plots/$country/$DATE_STR/monthly"
+            src="plots/$country/$DOWNSCALED_DATE/monthly"
             mkdir -p "$src"
             gcloud storage rsync -r --no-clobber "gs://${BUCKET}/$src" "$src" || true
           done
@@ -463,6 +590,7 @@ jobs:
           COUNTRY=Kenya python chirps_agro_climatology.py
         env:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.DOWNSCALED_DATE }}
 
       - name: Save CHIRPS climatology cache
         if: ${{ inputs.run_chirps_climatology && !inputs.skills_only && contains(inputs.countries, 'Kenya') && hashFiles('main_repo/chirps_clim_cache/**/*.nc') != '' }}
@@ -668,14 +796,17 @@ jobs:
       # or skipped an upstream stage above). Briefing PNGs were already
       # rsynced and then overwritten by collect; do not pull them again.
       - name: Top up ai_briefing prerequisites from GCS
-        if: ${{ inputs.run_ai_briefing }}
+        if: ${{ inputs.run_ai_briefing || inputs.run_image_captions }}
         continue-on-error: true
         working-directory: main_repo
         run: |
-          for rel in \
+          for rel in $(printf '%s\n' \
             "plots/Kenya/${DATE_STR}" \
+            "plots/Kenya/${DOWNSCALED_DATE}" \
+            "plots/Kenya/${DATE_STR_04DEG}" \
             "plots/Great_Horn/${DATE_STR}" \
-            "plots/diagnostics/${DATE_STR}"
+            "plots/Great_Horn/${DATE_STR_04DEG}" \
+            "plots/diagnostics/${DATE_STR}" | sort -u)
           do
             mkdir -p "$rel"
             # --no-clobber: only fill gaps, never overwrite plots this run just regenerated
@@ -700,9 +831,46 @@ jobs:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           DATE_STR: ${{ env.BRIEFING_DATE }}
           ECMWF_DATE_STR: ${{ env.DATE_STR }}
+          DOWNSCALED_DATE_STR: ${{ env.DOWNSCALED_DATE }}
+          FORECAST_04DEG_DATE_STR: ${{ env.DATE_STR_04DEG }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           BRIEFING_TEMPLATE_ID: ${{ inputs.use_dev_template && (inputs.dev_template_id || '1McY75NyFK8DsSrJGXfFHLN7EMcQPuTX0') || '1zSp3C35PqDfMKbT8WtEcxoG2EoyIAJA5' }}
           BRIEFING_ALLOW_MISSING_PICTURES: "1"
+
+      # ── Stage: image_captions (experimental). Captions the 8 Kenya slide
+      # plots with Claude Sonnet through the claude CLI, logged in with the
+      # CLAUDE_CODE_OAUTH_TOKEN secret (a `claude setup-token` token, so it
+      # uses that Claude subscription), falling back to Gemini Flash-Lite per
+      # plot. Writes prompts/captions_vision_<date>.txt (put in the email body
+      # below) and prompts/digest_vision_<date>.txt. Not in the production
+      # workflows yet.
+      - name: Install Claude Code
+        if: ${{ inputs.run_image_captions }}
+        continue-on-error: true
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Caption slide plots with Claude Sonnet
+        if: ${{ inputs.run_image_captions }}
+        id: captions
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          python ai_weather_briefing_from_images.py
+          {
+            echo "text<<CAPTIONS_EOF"
+            cat "prompts/captions_vision_${BRIEFING_DATE}.txt"
+            echo "CAPTIONS_EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          MAIN_PATH: ${{ github.workspace }}/main_repo/
+          DATE_STR: ${{ env.BRIEFING_DATE }}
+          ECMWF_DATE_STR: ${{ env.DATE_STR }}
+          DOWNSCALED_DATE_STR: ${{ env.DOWNSCALED_DATE }}
+          FORECAST_04DEG_DATE_STR: ${{ env.DATE_STR_04DEG }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CAPTION_BACKEND: claude
+          CAPTION_MODEL: sonnet
 
       # Fresh Drive-scoped token immediately before upload. The job-start
       # auth is for GCS; setup-gcloud can replace it with a cloud-platform
@@ -766,8 +934,11 @@ jobs:
           if-no-files-found: warn
           path: |
             main_repo/plots/**/${{ env.DATE_STR }}/**
+            main_repo/plots/**/${{ env.DATE_STR_04DEG }}/**
             main_repo/plots/briefing/${{ env.BRIEFING_DATE }}/**
             main_repo/prompts/digest_${{ env.BRIEFING_DATE }}.txt
+            main_repo/prompts/captions_vision_${{ env.BRIEFING_DATE }}.txt
+            main_repo/prompts/digest_vision_${{ env.BRIEFING_DATE }}.txt
             main_repo/s2s_briefing_${{ env.BRIEFING_DATE }}.pptx
 
       - name: Build attachment list
@@ -846,6 +1017,9 @@ jobs:
             pptx is in artifacts / Drive TEST, not attached (Resend 10 MB cap).
             Full output: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             Nothing from this run was uploaded to GCS or committed to main/website.
+
+            ${{ steps.captions.outputs.text && 'Slide plot captions (ai_weather_briefing_from_images.py):' || '' }}
+            ${{ steps.captions.outputs.text || '' }}
           attachments: ${{ steps.attachments.outputs.list }}
 
       - name: Email test run results

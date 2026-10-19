@@ -72,8 +72,16 @@ def _resolve_dates():
 
 
 date_str, ecmwf_date_str = _resolve_dates()
+# The 0.4 degree products are dated by their own init, normally a day newer than the
+# ECMWF/GEFS one (see forecast_04deg_dates.py): the Kenya downscaled forecast and what is
+# made from it (onset, spell and exceedance maps, their CHIRPS climatology) are under
+# DOWNSCALED_DATE_STR, the 0.4 degree plots under FORECAST_04DEG_DATE_STR. Both default
+# to the ECMWF date, which is where everything was before the split.
+downscaled_date_str = os.environ.get("DOWNSCALED_DATE_STR") or ecmwf_date_str
+forecast_04deg_date_str = os.environ.get("FORECAST_04DEG_DATE_STR") or ecmwf_date_str
 print(
-    f"Briefing date {date_str}; ECMWF/GEFS product date {ecmwf_date_str}",
+    f"Briefing date {date_str}; ECMWF/GEFS product date {ecmwf_date_str}; "
+    f"downscaled forecast date {downscaled_date_str}; 0.4 degree plot date {forecast_04deg_date_str}",
     file=sys.stderr,
 )
 
@@ -94,7 +102,7 @@ try:
     promt_unformat1 = gef.add_onset_from_netcdf(
         promt_unformat1,
         # observed CHIRPS onset continued with the downscaled forecast (run_rainfall_onset.py)
-        f"{prefix}/data/{ecmwf_date_str}/rainfall_onset_downscaled_Kenya.nc",
+        f"{prefix}/data/{downscaled_date_str}/rainfall_onset_downscaled_Kenya.nc",
     )
     gef.save_dict(promt_unformat1, f"{prefix}/promt_unformat1.json")
 except Exception as exc:
@@ -411,6 +419,7 @@ plots = ['hold', 'weekly_precip', "gefs_weekly_precip", "weekly_precip_downscale
          "50th_percentile_exedance", "anomaly_from_50th", "summary"]
 
 kenya_path = f"plots/Kenya/{ecmwf_date_str}"
+kenya_dwn_path = f"plots/Kenya/{downscaled_date_str}"
 great_horn_path = f"plots/Great_Horn/{ecmwf_date_str}"
 diagnostics_path = f"plots/diagnostics/{ecmwf_date_str}/weekly"
 diagnostics_monthly_path = f"plots/diagnostics/{ecmwf_date_str}/monthly"
@@ -418,6 +427,26 @@ briefing_plots_path = f"plots/briefing/{date_str}/"
 
 # only the first len(plots) slide types have a "{type}_plot" shape
 plot_paths = {t: f"{kenya_path}/weekly/{p}.png" for t, p in zip(slide_types, plots)}
+plot_paths["ECMWF_dwn"] = f"{kenya_dwn_path}/weekly/weekly_precip_downscaled.png"
+
+
+def prefer_04deg(path, name=None):
+    """
+    The public 0.4 degree counterpart of a 1.5 degree plot path
+    (plots/<country>/<ecmwf date>/<sub>/<file>, plot_s2s_04deg_.py's PUBLIC_PLOTS) when
+    it exists: plots/<country>/<0.4 degree date>/04deg/<sub>/<name or file>. Otherwise
+    the 1.5 degree path, e.g. outside the 0.4 degree domain or when its step didn't run.
+    """
+    country, _, sub, file = path.split("/")[-4:]
+    alt = f"plots/{country}/{forecast_04deg_date_str}/04deg/{sub}/{name or file}"
+    if os.path.exists(alt):
+        print(f"Using the 0.4 degree {alt} for {path}", file=sys.stderr)
+        return alt
+    return path
+
+
+for t in ("ECMWF_tercile", "ECMWF_efi", "ECMWF_p50", "ECMWF_p50anom"):
+    plot_paths[t] = prefer_04deg(plot_paths[t])
 
 # Indian Ocean moisture diagnostics (see IndianOceanState.py)
 IOD_path = f"{diagnostics_path}/ECMWF_s2s_10wind_sst_anomaly_{ecmwf_date_str}.png"
@@ -453,12 +482,12 @@ onsetecmwf_accum_climatology_path = f"{kenya_path}/monthly/onset_s2s_climatology
 onsetecmwf_climatology_10mm_path = f"{kenya_path}/monthly/onset_s2s_climatology_icpac10mm.png"
 
 # dry/wet spell probability & median length maps (see plot_s2s.py)
-median_wet_path = f"{kenya_path}/monthly/median_wetspell_length.png"
-wet5_path = f"{kenya_path}/monthly/prob_wetspell_5days.png"
-wet7_path = f"{kenya_path}/monthly/prob_wetspell_7days.png"
-median_dry_path = f"{kenya_path}/monthly/median_dryspell_length.png"
-dry5_path = f"{kenya_path}/monthly/prob_dryspell_5days.png"
-dry7_path = f"{kenya_path}/monthly/prob_dryspell_7days.png"
+median_wet_path = prefer_04deg(f"{kenya_path}/monthly/median_wetspell_length.png")
+wet5_path = prefer_04deg(f"{kenya_path}/monthly/prob_wetspell_5days.png")
+wet7_path = prefer_04deg(f"{kenya_path}/monthly/prob_wetspell_7days.png")
+median_dry_path = prefer_04deg(f"{kenya_path}/monthly/median_dryspell_length.png")
+dry5_path = prefer_04deg(f"{kenya_path}/monthly/prob_dryspell_5days.png")
+dry7_path = prefer_04deg(f"{kenya_path}/monthly/prob_dryspell_7days.png")
 
 # reforecast-archive climatology counterparts of the wet-spell maps above
 # (Kenya-only "climatological wet spell" block in plot_s2s.py; no dry-spell
@@ -467,7 +496,8 @@ median_wet_climatology_path = f"{kenya_path}/monthly/climatology_median_wetspell
 wet5_climatology_path = f"{kenya_path}/monthly/climatology_prob_wetspell_5days.png"
 wet7_climatology_path = f"{kenya_path}/monthly/climatology_prob_wetspell_7days.png"
 
-exceed20mm_path = f"{kenya_path}/weekly/chance_higherthan_20mm.png"
+# the 0.4 degree plot of the same weekly exceedance is named weekly_chance_higherthan_20mm
+exceed20mm_path = prefer_04deg(f"{kenya_path}/weekly/chance_higherthan_20mm.png", "weekly_chance_higherthan_20mm.png")
 
 # downscaled counterparts (Kenya only): onset maps from observed CHIRPS
 # continued with the per-member daily downscaled forecast (run_rainfall_onset.py), and dry/wet
@@ -503,7 +533,7 @@ downscaled_picture_paths = {
 }
 
 # Great Horn tercile plot (regional counterpart to the Kenya-only ECMWF_tercile_plot)
-ecmwf_tercile_ea_path = f"{great_horn_path}/weekly/chance_of_above_or_below.png"
+ecmwf_tercile_ea_path = prefer_04deg(f"{great_horn_path}/weekly/chance_of_above_or_below.png")
 
 picture_paths = {
     "ECMWF_tercile_plot_EA": ecmwf_tercile_ea_path,

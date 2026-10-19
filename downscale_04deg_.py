@@ -17,13 +17,19 @@ forecast for DATE_STR or a hindcast close to that date is missing, it exits
 without touching anything and the 1.5 degree outputs stay. The dekadal and
 Ghana downscaling are still dowscale_dekade.py's.
 
+DATE_STR is the 0.4 degree forecast's own init, which in the workflows is
+normally a day newer than the 1.5 degree ECMWF date (see forecast_04deg_dates.py),
+so the outputs go to that date's folders.
+
 The 0.4 degree forecast is 33 days long, so this product has 4 weeks where the
 1.5 degree one has 6. Rainfall onset needs the longer horizon (its definitions
-look up to 30 days ahead of a candidate day), so the 1.5 degree weeks 5-6 that
-dowscale_dekade.py made are kept in a second file,
-data_weekly_Kenya_downscaled_onset.nc: 0.4 degree weeks 1-4 followed by the 1.5
-degree weeks 5-6. Only run_rainfall_onset.py and the onset part of
-chirps_agro_climatology.py read it.
+look up to 30 days ahead of a candidate day), so a second store,
+daily_downscaled_kenya_members_onset.zarr, holds the per-member daily 0.4 degree
+days 1-28 followed by the per-member daily days of dowscale_dekade.py's 1.5
+degree run (data/<ONSET_1P5_DATE>/daily_downscaled_kenya_members.zarr), matched
+by the date the rain falls on: up to day 42 when both runs have the same init,
+one day less per day the 1.5 degree init is older. Only run_rainfall_onset.py
+and the onset part of chirps_agro_climatology.py read it.
 
 Inputs
     private_data/forecast_04deg/<date>/ECMWF_s2s_precip_04deg_<date>.zarr
@@ -44,6 +50,8 @@ Inputs
     downscale_data/chirpsv3_weeks/chirpsv3_weeks_2005_2025_sorted_<MM-DD>_Kenya.nc
 
 Env vars: DATE_STR and MAIN_PATH as in dowscale_dekade.py, plus
+    ONSET_1P5_DATE          date of the 1.5 degree run whose days extend the onset store
+                            (default DATE_STR; the ECMWF date in the workflows)
     HINDCAST_04DEG_STORE    default gs://sheerwater-datalake/ecmwf-0_4/ECMWF_ext_range_hindcast_tp_04deg_2025.zarr
     HINDCAST_04DEG_PATH     default downscale_data/hindcast_04deg
     DOWNSCALE_CLOSING_SIZE  grey closing window of the ranks, in 0.05 degree cells (default 0 = off)
@@ -70,6 +78,7 @@ from datetime import datetime, timedelta
 import os
 import re
 import sys
+import shutil
 import glob
 import pandas as pd
 
@@ -84,6 +93,7 @@ prefix=os.environ["MAIN_PATH"]
 data_path=f'{prefix}/data/{date_str}'
 hindcast_store=os.environ.get("HINDCAST_04DEG_STORE","gs://sheerwater-datalake/ecmwf-0_4/ECMWF_ext_range_hindcast_tp_04deg_2025.zarr")
 hindcast_path=os.environ.get("HINDCAST_04DEG_PATH","downscale_data/hindcast_04deg")
+onset_1p5_date=os.environ.get("ONSET_1P5_DATE",date_str)
 
 closing_size=int(os.environ.get("DOWNSCALE_CLOSING_SIZE",0))
 rank_sigma=float(os.environ.get("DOWNSCALE_RANK_SIGMA",1.5))
@@ -234,38 +244,79 @@ has_month=n_weeks>=4
 if has_month:
     rescaled_forecast_month = rescaled_forecast.isel(step=slice(0,4)).sum('step',keep_attrs=True).assign_coords(step=rescaled_forecast.isel(step=3).step).expand_dims('step')
 
-# Weeks beyond the 0.4 degree forecast, for rainfall onset: taken from the 1.5 degree
-# file dowscale_dekade.py wrote earlier in this run, which is about to be overwritten.
-# On a rerun that file is already the 0.4 degree one, and the weeks are carried over
-# from the previous onset file instead.
+# Days beyond the 0.4 degree forecast, for rainfall onset: the per-member daily downscaled
+# forecast of dowscale_dekade.py's 1.5 degree run in data/<ONSET_1P5_DATE>/, matched by
+# the date the rain falls on. That run can be initialized a few days before this one (the
+# 1.5 degree forecast comes out a day later than the 0.4 degree one). When the two dates
+# are the same, the file is about to be overwritten below, so it is read first; on a rerun
+# it is already the 0.4 degree one, and the days are carried over from the previous onset
+# store instead.
 weekly_file=f'{data_path}/data_weekly_Kenya_downscaled.nc'
-onset_file=f'{data_path}/data_weekly_Kenya_downscaled_onset.nc'
+members_file=f'{data_path}/daily_downscaled_kenya_members.zarr'
+onset_members_file=f'{data_path}/daily_downscaled_kenya_members_onset.zarr'
+onset_1p5_members_file=f'{prefix}/data/{onset_1p5_date}/daily_downscaled_kenya_members.zarr'
 
-def later_1p5deg_weeks():
-    for path in (weekly_file,onset_file):
-        if not os.path.exists(path):
+def later_1p5deg_days():
+    """
+    (per-member daily DataArray on this forecast's lead days after its last week, description
+    of where those days come from), or (None, None). Loaded here: when ONSET_1P5_DATE is
+    DATE_STR the source is the members store this script overwrites.
+    """
+    init=pd.Timestamp(data.time.values)
+    last_lead=kenya_weekly.step.values[-1]
+    for path in (onset_1p5_members_file,onset_members_file):
+        if not os.path.isdir(path):
             continue
-        with xr.open_dataset(path) as ds:
-            if path==weekly_file and 'forecast_resolution' in ds.attrs:
-                continue  # already the 0.4 degree product
-            later=ds.tp.sel(step=ds.step>kenya_weekly.step.values[-1]).load()
-            same_run=(pd.Timestamp(ds.time.values)==pd.Timestamp(kenya_weekly.time.values)
-                      and later.sizes['number']==kenya_weekly.sizes['number']
-                      and later.sizes['latitude']==kenya_weekly.sizes['latitude']
-                      and later.sizes['longitude']==kenya_weekly.sizes['longitude'])
-        if later.sizes['step'] and same_run:
-            later=later.drop_vars([c for c in later.coords if c not in kenya_weekly.tp.coords])
-            return later.assign_coords(latitude=kenya_weekly.latitude,longitude=kenya_weekly.longitude)
-    return None
+        ds=xr.open_zarr(path,consolidated=True)
+        rerun=path==onset_members_file
+        if not rerun and str(ds.attrs.get('forecast_resolution','')).startswith('0.4deg'):
+            continue  # already this script's product
+        source_init=pd.Timestamp(ds.time.values)
+        shift=init-source_init
+        if shift<pd.Timedelta(0):
+            continue
+        # step s of the source is the rain on source_init + s - 1 day, which is lead s - shift here
+        later=ds.tp.assign_coords(step=ds.step.values-shift.to_timedelta64())
+        later=later.sel(step=later.step>last_lead)
+        if not (later.sizes['step'] and later.sizes['number']==kenya_weekly.sizes['number']
+                and later.sizes['latitude']==kenya_weekly.sizes['latitude']
+                and later.sizes['longitude']==kenya_weekly.sizes['longitude']):
+            continue
+        later=later.reset_coords(drop=True).assign_coords(latitude=kenya_weekly.latitude,longitude=kenya_weekly.longitude).load()
+        first_day,last_day=[int(later.step.values[i]/np.timedelta64(1,'D')) for i in (0,-1)]
+        if rerun:
+            source=ds.attrs['forecast_resolution'].split(', ',1)[1]
+        else:
+            source=f"1.5deg days {first_day}-{last_day} (init {source_init:%Y-%m-%d})"
+        return later,source
+    return None,None
 
-later_weeks=later_1p5deg_weeks()
-if later_weeks is not None:
-    onset_weekly=xr.concat([kenya_weekly.tp,later_weeks.transpose(*kenya_weekly.tp.dims)],dim='step').to_dataset(name='tp')
-    onset_weekly['tp'].attrs=kenya_weekly.tp.attrs
-    onset_weekly.attrs=dict(kenya_weekly.attrs,forecast_resolution=f"0.4deg weeks 1-{n_weeks}, 1.5deg weeks {n_weeks+1}-{onset_weekly.sizes['step']}")
-else:
-    print("No 1.5 degree weeks beyond the 0.4 degree forecast found: rainfall onset will only have "
+later_days,later_source=later_1p5deg_days()
+if later_days is None:
+    print("No 1.5 degree days beyond the 0.4 degree forecast found: rainfall onset will only have "
           f"the {n_weeks} weeks of the 0.4 degree product")
+
+def save_onset_members():
+    """members_file's days followed by later_days, one member at a time, as onset_members_file."""
+    members=xr.open_zarr(members_file,consolidated=True)
+    attrs=dict(members.attrs,forecast_resolution=f"0.4deg days 1-{members.sizes['step']} (init {date_str}), {later_source}")
+    for i,n in enumerate(members.number.values):
+        both=xr.concat([members.tp.sel(number=[n]).reset_coords(drop=True).load(),
+                        later_days.sel(number=[n]).transpose(*members.tp.dims)],dim='step')
+        one=both.assign_coords(time=members.time).to_dataset(name='tp')
+        one['tp'].attrs=members.tp.attrs
+        one.attrs=attrs
+        for var in one.variables.values():
+            var.encoding.clear()
+        one=one.chunk(-1)
+        if i==0:
+            one.to_zarr(onset_members_file+'.partial',mode='w',consolidated=True)
+        else:
+            one.to_zarr(onset_members_file+'.partial',append_dim='number',consolidated=True)
+    # later_days may be read from the old onset store (rerun): only replace it once the new one is complete
+    shutil.rmtree(onset_members_file,ignore_errors=True)
+    os.replace(onset_members_file+'.partial',onset_members_file)
+    print(f"Rainfall onset forecast: {attrs['forecast_resolution']} -> {onset_members_file}")
 
 CE_Kenya_dwnscaled_timeseries=rescaled_forecast.sel(longitude=slice(36,42),latitude=slice(5,-5)).mean({'longitude','latitude'})
 CE_Kenya_dwnscaled_timeseries_daily=gef.disaggregate_weekly_to_daily(CE_Kenya_dwnscaled_timeseries.tp,data.sel(longitude=slice(36,42),latitude=slice(5,-5)).mean({'longitude','latitude'}).tp)
@@ -283,16 +334,21 @@ da = da.rio.write_crs("EPSG:4326").rio.write_nodata(np.nan)
 
 #-----from here on the 1.5 degree outputs are replaced-----------------------------------------------------------------#
 print(f"Replacing the Kenya weekly downscaled forecast for {date_str} with the 0.4 degree version ({n_weeks} weeks)")
+os.makedirs(data_path, exist_ok=True)
 kenya_weekly.to_netcdf(weekly_file)
 gef.save_downscaled_zarr(kenya_weekly, weekly_file.replace('.nc','.zarr'))
-if later_weeks is not None:
-    onset_weekly.to_netcdf(onset_file)
-    gef.save_downscaled_zarr(onset_weekly, onset_file.replace('.nc','.zarr'))
-    print(f"Rainfall onset forecast: {onset_weekly.attrs['forecast_resolution']} -> {onset_file}")
+# the weekly onset file of earlier versions of this script: the onset store below replaces it
+for old in ('data_weekly_Kenya_downscaled_onset.nc','data_weekly_Kenya_downscaled_onset.zarr'):
+    if os.path.isdir(f'{data_path}/{old}'):
+        shutil.rmtree(f'{data_path}/{old}')
+    elif os.path.exists(f'{data_path}/{old}'):
+        os.remove(f'{data_path}/{old}')
 da.rio.to_raster(f'{data_path}/daily_downscaled_kenya.tif', tags={"band_dim_name": "day"})
 gef.save_downscaled_zarr(daily_downscaled.tp.astype('float32').transpose('step','latitude','longitude'), f'{data_path}/daily_downscaled_kenya.zarr')
 # the per-member daily field, split into days as the spell maps below are
-gef.save_daily_downscaled_members_zarr(kenya_weekly, data, f'{data_path}/daily_downscaled_kenya_members.zarr', profile_sigma=SPELL_PROFILE_SIGMA)
+gef.save_daily_downscaled_members_zarr(kenya_weekly, data, members_file, profile_sigma=SPELL_PROFILE_SIGMA)
+if later_days is not None:
+    save_onset_members()
 CE_Kenya_dwnscaled_timeseries_daily.to_zarr(f'{data_path}/CE_Kenya_dwnscaled_timeseries_daily.zarr', mode='w', consolidated=True)
 
 #-----plots------------------------------------------------------------------------------------------------------------#

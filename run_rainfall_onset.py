@@ -19,7 +19,10 @@ onset maps of run_rainfall_onset_legacy.py.
 2. Observed + forecast (Kenya only -- the downscaled forecast is Kenya-only):
    the same CHIRPS series continued, per ensemble member, with the daily
    downscaled forecast that starts the day after the last CHIRPS day (see
-   resolve_forecast), and the onset search rerun over the joined series.
+   resolve_forecast), and the onset search rerun over the joined series. When
+   CHIRPS lags, that forecast only bridges the days up to the newest forecast
+   (DATE_STR's, see resolve_latest_forecast), which takes over from its first
+   day, member by member.
    -> plots/<country>/<date>/monthly/onset_downscaled{,_icpac10mm,_accum}.png
       data/<date>/rainfall_onset_{,icpac10mm_,accum_}downscaled_<country>.nc
       (rainfall_onset_downscaled_<country>.nc feeds ai_weather_briefing.py)
@@ -120,6 +123,7 @@ bboxes = {
     "Great_Horn": {"lat1": 25.5,  "lon1": 19.5, "lat2": -9,    "lon2": 57},
     "Zimbabwe":   {"lat1": -15,   "lon1": 25,   "lat2": -22.5, "lon2": 33.5},
     "Malawi":     {"lat1": -9,    "lon1": 31.5, "lat2": -18,   "lon2": 37.5},
+    "Somalia":    {"lat1": 13.5,  "lon1": 40.5, "lat2": -3,    "lon2": 52.5},
 }
 gef.lat1 = bboxes[country]['lat1']
 gef.lat2 = bboxes[country]['lat2']
@@ -323,13 +327,30 @@ def forecast_files(init):
 ONSET_WEEKLY_FILE = 'data_weekly_Kenya_downscaled_onset.nc'
 
 
+# What downscale_04deg_.py writes now instead: the per-member daily 0.4 degree forecast
+# followed by the 1.5 degree run's days, already split into days. Read as it is when it's
+# there -- the 0.4 degree forecast is a day newer than the 1.5 degree one, so its folder
+# has no ECMWF_s2s_precip_<init>.zarr to split weeks with until the next day's run.
+ONSET_MEMBERS_STORE = 'daily_downscaled_kenya_members_onset.zarr'
+
+
 def downscaled_weekly_path(path):
     onset_path = f'{path}/{ONSET_WEEKLY_FILE}'
     return onset_path if os.path.exists(onset_path) else f'{path}/data_weekly_Kenya_downscaled.nc'
 
 
+def forecast_members(path):
+    """The ensemble member numbers of the downscaled forecast in path."""
+    store = f'{path}/{ONSET_MEMBERS_STORE}'
+    if os.path.isdir(store):
+        return xr.open_zarr(store, consolidated=True).number.values
+    with xr.open_dataset(downscaled_weekly_path(path)) as ds:
+        return ds.number.values
+
+
 def has_forecast(path, init):
-    return all(os.path.exists(f'{path}/{f}') for f in forecast_files(init))
+    return (os.path.isdir(f'{path}/{ONSET_MEMBERS_STORE}')
+            or all(os.path.exists(f'{path}/{f}') for f in forecast_files(init)))
 
 
 def fetch_forecast(init):
@@ -350,12 +371,19 @@ def fetch_forecast(init):
     shutil.rmtree(tmp, ignore_errors=True)
     os.makedirs(tmp)
     try:
-        for f in forecast_files(init):
-            if not fs.exists(f'{remote}/{f}'):
-                raise FileNotFoundError(f'gs://{remote}/{f}')
+        weekly = forecast_files(init)
+        have_weekly = all(fs.exists(f'{remote}/{f}') for f in weekly)
+        # the 6-week forms first, the smaller one before the bigger (members) one
+        if have_weekly and fs.exists(f'{remote}/{ONSET_WEEKLY_FILE}'):
+            wanted = weekly + [ONSET_WEEKLY_FILE]
+        elif fs.exists(f'{remote}/{ONSET_MEMBERS_STORE}'):
+            wanted = [ONSET_MEMBERS_STORE]
+        elif have_weekly:
+            wanted = weekly
+        else:
+            raise FileNotFoundError(f'gs://{remote}/{weekly[0]} + {weekly[1]} or {ONSET_MEMBERS_STORE}')
+        for f in wanted:
             fs.get(f'{remote}/{f}', f'{tmp}/{f}', recursive=True)
-        if fs.exists(f'{remote}/{ONSET_WEEKLY_FILE}'):
-            fs.get(f'{remote}/{ONSET_WEEKLY_FILE}', f'{tmp}/{ONSET_WEEKLY_FILE}')
     except Exception as e:
         print(f"forecast: {init} not available from the bucket ({e})")
         shutil.rmtree(tmp, ignore_errors=True)
@@ -395,6 +423,32 @@ def resolve_forecast(obs_end):
     return None, None
 
 
+def resolve_latest_forecast(bridge_init):
+    """
+    (init date string, folder) of the newest forecast, initialized after
+    bridge_init: DATE_STR's own, else up to FORECAST_MAX_LOOKBACK days older.
+    CHIRPS can lag DATE_STR by up to ~9 days (the preliminary product arrives
+    per pentad), so the forecast that follows straight on from CHIRPS (the
+    bridge, see resolve_forecast) can be a week older than the newest one. The
+    bridge then only fills the days between the last CHIRPS day and this
+    forecast's first day, and this one takes over from there (see
+    combine_obs_forecast). (None, None) when there's nothing newer than the
+    bridge, or when a forecast is pinned with FORECAST_DATE/FORECAST_DATA_PATH.
+    """
+    if forecast_date_override or forecast_path_override or bridge_init is None:
+        return None, None
+    for back in range(FORECAST_MAX_LOOKBACK + 1):
+        init = (pd.Timestamp(date_str) - pd.Timedelta(days=back)).strftime('%Y-%m-%d')
+        if init <= bridge_init:
+            break
+        local = f'{prefix}/data/{init}'
+        path = local if has_forecast(local, init) else fetch_forecast(init)
+        if path:
+            print(f"forecast: latest init {init} from {path} takes over from its first day")
+            return init, path
+    return None, None
+
+
 def load_daily_downscaled_forecast(chirps, forecast_date, forecast_path):
     """
     Generator over ensemble members of the daily downscaled forecast, on the
@@ -409,7 +463,26 @@ def load_daily_downscaled_forecast(chirps, forecast_date, forecast_path):
 
     Forecast step s covers the 24h ending at init + s, i.e. the rain that falls
     on date init + s - 1 day -- matching CHIRPS's "24h starting at time" label.
+
+    When the folder holds ONSET_MEMBERS_STORE, its members are already split into
+    days (by downscale_04deg_.py, with the 0.4 and 1.5 degree runs' own profiles),
+    and are only interpolated onto the CHIRPS grid.
     """
+    land = chirps.notnull().any('time')
+    store = f'{forecast_path}/{ONSET_MEMBERS_STORE}'
+    if os.path.isdir(store):
+        members = xr.open_zarr(store, consolidated=True)
+        print(f"forecast: {members.sizes['step']} days from {ONSET_MEMBERS_STORE}"
+              + (f" ({members.attrs['forecast_resolution']})" if 'forecast_resolution' in members.attrs else ""))
+        init = pd.Timestamp(members.time.values)
+        for n in members.number.values:
+            daily = members.tp.sel(number=n).load().interp(latitude=chirps.latitude, longitude=chirps.longitude)
+            dates = init + pd.to_timedelta(daily.step.values) - pd.Timedelta(days=1)
+            daily = daily.assign_coords(time=('step', dates)).swap_dims(step='time')
+            daily = daily.drop_vars(['step', 'valid_time', 'number', 'surface', 'year', 'init', 'spatial_ref'], errors='ignore')
+            yield n, daily.transpose('time', 'latitude', 'longitude').where(land)
+        return
+
     weekly_path = downscaled_weekly_path(forecast_path)
     rescaled = xr.open_dataset(weekly_path).load()
     print(f"forecast: {rescaled.sizes['step']} weeks from {os.path.basename(weekly_path)}"
@@ -417,29 +490,37 @@ def load_daily_downscaled_forecast(chirps, forecast_date, forecast_path):
     rescaled = rescaled.interp(latitude=chirps.latitude, longitude=chirps.longitude)
     s2s = xr.open_zarr(f'{forecast_path}/ECMWF_s2s_precip_{forecast_date}.zarr', consolidated=True).compute()
     init = pd.Timestamp(s2s.time.values)
-    land = chirps.notnull().any('time')
 
     for n in rescaled.number.values:
         daily = gef.disaggregate_weekly_to_daily(rescaled.tp.sel(number=n), s2s.tp.sel(number=n),
                                                  profile_sigma=ONSET_PROFILE_SIGMA or None).tp
         dates = init + pd.to_timedelta(daily.step.values) - pd.Timedelta(days=1)
         daily = daily.assign_coords(time=('step', dates)).swap_dims(step='time')
-        daily = daily.drop_vars(['step', 'valid_time', 'number', 'surface', 'year', 'spatial_ref'], errors='ignore')
+        daily = daily.drop_vars(['step', 'valid_time', 'number', 'surface', 'year', 'init', 'spatial_ref'], errors='ignore')
         yield n, daily.transpose('time', 'latitude', 'longitude').where(land)
 
 
-def combine_obs_forecast(chirps, forecast_daily):
+def combine_obs_forecast(chirps, forecast_daily, latest_daily=None):
     """CHIRPS up to its last day, then forecast days after it. Observations win
     where both exist; a gap between the two (forecast initialized after the
     day following the last CHIRPS day) is left NaN, which blocks any onset whose
-    windows touch the gap."""
+    windows touch the gap. With latest_daily (a newer forecast, see
+    resolve_latest_forecast), forecast_daily only bridges the days up to
+    latest_daily's first day, and latest_daily takes over from there."""
+    one_day = np.timedelta64(1, 'D')
     obs_end = chirps.time.values[-1]
-    fc = forecast_daily.sel(time=slice(obs_end + np.timedelta64(1, 'D'), None))
-    series = xr.concat([chirps.drop_vars('spatial_ref', errors='ignore'), fc], dim='time')
+    pieces = [chirps.drop_vars('spatial_ref', errors='ignore')]
+    if latest_daily is None:
+        pieces.append(forecast_daily.sel(time=slice(obs_end + one_day, None)))
+    else:
+        latest_start = max(latest_daily.time.values[0], obs_end + one_day)
+        pieces.append(forecast_daily.sel(time=slice(obs_end + one_day, latest_start - one_day)))
+        pieces.append(latest_daily.sel(time=slice(latest_start, None)))
+    series = xr.concat(pieces, dim='time')
     return series.reindex(time=pd.date_range(series.time.values[0], series.time.values[-1]))
 
 
-def plot_combined(onset, obs_met, first_day, last_day, obs_end, forecast_date, label, save_path):
+def plot_combined(onset, obs_met, first_day, last_day, obs_end, forecast_label, label, save_path):
     """Left: ensemble-mean onset date (obs + forecast), hatched where fewer than
     ONSET_AGREEMENT_THRESH % of members find an onset, with cells already met in
     CHIRPS outlined in black. Right: % of members with an onset by the end of
@@ -475,7 +556,7 @@ def plot_combined(onset, obs_met, first_day, last_day, obs_end, forecast_date, l
     ax.set_title(f'Chance onset has happened by {last_day:%b %d}', fontsize=13, fontweight='bold')
 
     fig.suptitle(f'Rainy season onset, CHIRPS + downscaled forecast ({label}) — {country}\n'
-                 f'observed {first_day:%Y-%m-%d} to {obs_end:%Y-%m-%d}, forecast init {forecast_date}',
+                 f'observed {first_day:%Y-%m-%d} to {obs_end:%Y-%m-%d}, {forecast_label}',
                  fontsize=15, fontweight='bold')
     fig.tight_layout()
     plt.savefig(save_path, bbox_inches='tight', dpi=110)
@@ -525,11 +606,30 @@ else:
         print(f"combined: no downscaled forecast for {forecast_date} in {forecast_path}, skipping")
         forecast_path = None
 
+# a newer forecast than the bridge one takes over from its first day; members
+# are paired by number, so both need the same ensemble
+latest_date, latest_path = resolve_latest_forecast(forecast_date if forecast_path else None)
+if latest_path:
+    members = [forecast_members(p) for p in (forecast_path, latest_path)]
+    if not np.array_equal(*members):
+        print(f"forecast: {forecast_date} and {latest_date} have different members, "
+              f"using {forecast_date} alone")
+        latest_date, latest_path = None, None
+
 if forecast_path:
+    if latest_path:
+        forecast_label = (f'forecast init {latest_date} '
+                          f'(gap to it bridged by init {forecast_date})')
+    else:
+        forecast_label = f'forecast init {forecast_date}'
     onsets = {label: [] for label in definitions}
     series = None
-    for n, forecast_daily in load_daily_downscaled_forecast(chirps, forecast_date, forecast_path):
-        series = combine_obs_forecast(chirps, forecast_daily)
+    members = load_daily_downscaled_forecast(chirps, forecast_date, forecast_path)
+    latest_members = (load_daily_downscaled_forecast(chirps, latest_date, latest_path)
+                      if latest_path else None)
+    for n, forecast_daily in members:
+        latest_daily = next(latest_members)[1] if latest_members else None
+        series = combine_obs_forecast(chirps, forecast_daily, latest_daily)
         for label, (onset_fn, kwargs, _, _) in definitions.items():
             onsets[label].append(onset_fn(series, time_dim='time', **kwargs).expand_dims(number=[n]))
 
@@ -538,7 +638,9 @@ if forecast_path:
     n_gap = int(series.isel(time=slice(n_obs, None)).isnull().all(['latitude', 'longitude']).sum())
     print(f"combined series: {series_start:%Y-%m-%d} to {series_end:%Y-%m-%d} "
           f"({n_obs} days CHIRPS + {series.sizes['time'] - n_obs} days forecast"
-          + (f", {n_gap} of them missing: gap between CHIRPS and forecast init" if n_gap else "") + ")")
+          + (f", {n_gap} of them missing: gap between CHIRPS and forecast init" if n_gap else "")
+          + (f", the first {(pd.Timestamp(latest_date) - window_end).days - 1} from init {forecast_date}"
+             if latest_path else "") + ")")
 
     for label, (_, _, _, pad_days) in definitions.items():
         onset = xr.concat(onsets[label], dim='number')
@@ -548,5 +650,5 @@ if forecast_path:
         # window, like the legacy script's forecast plots
         last_day = series_end - pd.Timedelta(days=pad_days - 1)
         obs_met = (obs_status[label] == 2).astype(float).where(obs_status[label].notnull())
-        plot_combined(onset, obs_met, series_start, last_day, window_end, forecast_date, label,
+        plot_combined(onset, obs_met, series_start, last_day, window_end, forecast_label, label,
                       f'{plot_dir}/onset_downscaled{png_suffix[label]}.png')

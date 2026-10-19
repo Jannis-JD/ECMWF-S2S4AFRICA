@@ -133,9 +133,10 @@ forecast_files = {
     (10, 11): ["ECMWF_tp_forecasts_10-11-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_29_Great_Horn.nc","October_Dekad2"],
     (10, 21): ["ECMWF_tp_forecasts_10-21-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_30_Great_Horn.nc","October_Dekad3"],
     (11, 1): ["ECMWF_tp_forecasts_11-01-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_31_Great_Horn.nc","November_Dekad1"],
-    # (11, 11) needs chirpsv3_dekads_2005_2025_32_Great_Horn.nc, which is not in
-    # downscale_data/ yet -- the reforecast half is already there. Adding the key
-    # before the climatology exists makes the (10,21)/(11,1) runs fail on open.
+    (11, 11): ["ECMWF_tp_forecasts_11-11-2025_day2_to_day11_Kenya.nc","chirpsv3_dekads_2005_2025_32_Great_Horn.nc","November_Dekad2"],
+    # (11, 21) has its climatology (chirpsv3_dekads_2005_2025_33_Great_Horn.nc,
+    # from build_chirps_dekad_climatology.py) but not its reforecast file yet.
+    # Adding a key before both files exist makes the runs before it fail on open.
 
 }
 
@@ -149,6 +150,7 @@ if (int(month),int(day)) in forecast_files.keys():
         "kenya_plus":{"lat1": 7.5, "lon1":27, "lat2": -7.5, "lon2": 43},
         "Great_Horn":{"lat1": 25.5, "lon1": 19.5, "lat2": -8, "lon2": 57},
         "Ethiopia": {"lat1": 16, "lon1": 32, "lat2": 2, "lon2": 49},
+        "Somalia": {"lat1": 13, "lon1": 40.5, "lat2": -2.5, "lon2": 52},
     }
 
     country='Great_Horn'

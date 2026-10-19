@@ -3,7 +3,9 @@
 
 Reads the CHC-standardized 0.4 degree daily ensemble straight from CHC's server
 (pr_IFS-SUBS-0.4_<YYYYMMDD>.daily.nc, the init on DATE_STR or the closest one
-before it; the server's address comes from FORECAST_04DEG_URL), and writes the
+before it; the server's address comes from FORECAST_04DEG_URL), or from the
+private archive of those files once CHC has dropped them (forecast_04deg_dates.py
+archive), and writes the
 same precip plots as plot_s2s.py, under the same filenames, into
 private_plots/<country>/<date>/04deg/{weekly,dekadal,monthly}/.
 
@@ -50,16 +52,15 @@ import xarray as xr
 import get_ECMWF_functions as gef
 import efi_sot
 import build_mclimate_0p4
+from forecast_04deg_dates import available_inits, archive_fs
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import re
 import sys
 import glob
 import shutil
 import fnmatch
-import requests
 from datetime import datetime, timedelta
 
 if "DATE_STR" in os.environ:
@@ -92,28 +93,17 @@ MAX_INIT_LAG_DAYS=3
 
 def find_chc_forecast(date_str):
     """
-    (url, init date string) of the forecast on CHC's server initialized on
-    date_str or, if that one isn't there, the closest init before it. The server
-    keeps one folder per month, so the previous month's is listed too for dates
-    early in a month. Returns (None, None) if nothing recent enough is there.
+    (url, init date string) of the forecast initialized on date_str or, if that
+    one isn't there, the closest init before it: on CHC's server, or, once CHC
+    has dropped it, in the private archive (gs:// path, see
+    forecast_04deg_dates.py archive). Returns (None, None) if nothing recent
+    enough is in either.
     """
     target=datetime.strptime(date_str,'%Y-%m-%d')
-    months=sorted({target.strftime('%m'),(target-timedelta(days=MAX_INIT_LAG_DAYS)).strftime('%m')})
-    available={}
-    for month in months:
-        link=f'{CHC_URL}/{month}/'
-        try:
-            html=requests.get(link,timeout=30).text
-        except requests.RequestException as e:
-            print(f"Could not list month {month} on CHC's server ({type(e).__name__})")
-            continue
-        for f in re.findall(r'href="(pr_IFS-SUBS-0\.4_(\d{8})\.daily\.nc)"',html):
-            available[datetime.strptime(f[1],'%Y%m%d')]=link+f[0]
-
-    usable=[d for d in available if timedelta(0)<=target-d<=timedelta(days=MAX_INIT_LAG_DAYS)]
-    if not usable:
+    available=available_inits(target-timedelta(days=MAX_INIT_LAG_DAYS),target)
+    if not available:
         return None,None
-    init=max(usable)
+    init=max(available)
     return available[init],init.strftime('%Y-%m-%d')
 
 def download_04deg_precip(url,init_str):
@@ -124,9 +114,24 @@ def download_04deg_precip(url,init_str):
     integer day steps, step i being the rain falling in the 24h starting at
     init + i days, and no time coords. "#mode=bytes" has netCDF read it over
     HTTP range requests, so only the chunks covering the cut-out are fetched.
+    An archived copy (gs:// path) is downloaded whole to private_data/ first, and
+    deleted again once the cut-out is read.
     """
+    if url.startswith('gs://'):
+        local=f'{prefix}/private_data/forecast_04deg/{os.path.basename(url)}'
+        os.makedirs(os.path.dirname(local),exist_ok=True)
+        archive_fs().get(url,local)
+        try:
+            # the cut-out is loaded before the file is closed
+            with xr.open_dataset(local,engine="netcdf4") as raw:
+                return cut_out_04deg_precip(raw,init_str)
+        finally:
+            os.remove(local)
+    return cut_out_04deg_precip(xr.open_dataset(url+"#mode=bytes",engine="netcdf4"),init_str)
+
+def cut_out_04deg_precip(raw,init_str):
+    """download_04deg_precip's cut-out of an opened CHC file."""
     north,west,south,east=bounding_box
-    raw=xr.open_dataset(url+"#mode=bytes",engine="netcdf4")
     raw=raw.rename({'M':'number','L':'step','Y':'latitude','X':'longitude','pr':'tp'})
     raw=raw.sel(latitude=slice(north,south),longitude=slice(west,east)).load()
     # float32 coords like 0.4000001 don't match the m-climate's float64 ones
@@ -153,17 +158,15 @@ if cached:
     print(f"Using {cached[-1]}")
     data=xr.open_zarr(cached[-1],consolidated=True).compute()
 else:
-    if not CHC_URL:
-        print(f"Skipping 0.4 degree plots: FORECAST_04DEG_URL is not set and no forecast is in {forecast_path}")
-        sys.exit(0)
     url,init_str=find_chc_forecast(date_str)
     if url is None:
         print(f"Skipping 0.4 degree plots: no forecast initialized on {date_str} or up to "
-              f"{MAX_INIT_LAG_DAYS} days before it on CHC's server")
+              f"{MAX_INIT_LAG_DAYS} days before it on CHC's server or in the archive")
         sys.exit(0)
     if init_str!=date_str:
         print(f"No 0.4 degree forecast initialized on {date_str}, using the {init_str} one")
-    print(f"Downloading the {init_str} forecast")
+    # CHC's address is not printed; the archive's is
+    print(f"Downloading the {init_str} forecast" + (f" from {url}" if url.startswith('gs://') else ""))
     # the range requests to CHC's server get reset now and then
     for attempt in range(1,4):
         try:
@@ -256,6 +259,7 @@ bboxes = {
     "Great_Horn": {"lat1": 25.5,  "lon1": 19.5, "lat2": -9,    "lon2": 57},
     "Zimbabwe":   {"lat1": -15,   "lon1": 25,   "lat2": -22.5, "lon2": 33.5},
     "Malawi":     {"lat1": -9,    "lon1": 31.5, "lat2": -18,   "lon2": 37.5},
+    "Somalia":    {"lat1": 13.5,  "lon1": 40.5, "lat2": -3,    "lon2": 52.5},
 }
 
 major_cities = {
@@ -271,6 +275,7 @@ major_cities = {
     "Great_Horn":  [(9.0272, 38.7369),   (2.02000, 45.2000),  ('Addis Ababa', 'Mogadishu')],
     "Zimbabwe":    [(-17.8292, 31.0522), (-20.1500, 28.5833), ('Harare', 'Bulawayo')],
     "Malawi":      [(-13.9626, 33.7741), (-15.7861, 35.0058), ('Lilongwe', 'Blantyre')],
+    "Somalia":     [(2.0469, 45.3182),   (9.5624, 44.0770),   ('Mogadishu', 'Hargeisa')],
 }
 
 countries=os.environ["COUNTRIES"].split(',')

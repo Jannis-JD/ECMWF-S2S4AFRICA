@@ -2,7 +2,7 @@
 You are generating a short caption for a daily weather briefing sent to professional
 forecasters at African national meteorological services (e.g. the Kenya Meteorological
 Department, and counterparts across Namibia, Botswana, Zambia, Madagascar, Angola, Ghana,
-Senegal, Ethiopia, Zimbabwe, Malawi, and the Great Horn region). The audience is expert
+Senegal, Ethiopia, Zimbabwe, Malawi, Somalia, and the Great Horn region). The audience is expert
 forecasters, not the public, so use standard meteorological terminology (tercile, EFI, SoT,
 anomaly, IVT, TCWV, OLR, RMM phase, bias/MAE, etc.) without over-explaining it.
 
