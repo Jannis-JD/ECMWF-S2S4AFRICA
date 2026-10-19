@@ -172,6 +172,95 @@ jobs:
           MAIN_PATH: ${{ github.workspace }}/main_repo/
           DATE_STR: "${{ inputs.date_str }}"
 
+      # ── OLR tropical waves + MJO OLR/RMM indices ─────────────────────
+      # Needs the ERA5 archive (daily OLR 2006-now, 15S-15N u850/u200, BoM's
+      # RMM file) kept in gs://${BUCKET}/era5/: pull it, top it up to the
+      # latest ERA5T day from ARCO (only the missing days), push the changed
+      # files back (appending ERA5 days is date-independent and idempotent).
+      # Then the six scripts in order, on the ECMWF date; their forecast and
+      # reforecast come from dynamical.org and Planette, not from the download
+      # above. Only plots/olr_waves/<date>/ and data/<date>/mjo_*_index_<date>.nc
+      # are published: the ~340 MB of intermediate zarrs are removed.
+      - name: Pull ERA5 archive from GCS
+        id: era5_pull
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          mkdir -p olr_obs
+          gcloud storage rsync -r "gs://${BUCKET}/era5" olr_obs
+
+      - name: Top up ERA5 archive
+        if: ${{ steps.era5_pull.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          python olr_obs_archive.py
+          python rmm_wind_archive.py
+
+      # always(): a partly topped-up archive is still worth saving (each
+      # yearly file is written atomically); no deletes, so nothing is lost
+      - name: Push ERA5 archive to GCS
+        if: ${{ always() && steps.era5_pull.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          gcloud storage rsync -r olr_obs "gs://${BUCKET}/era5"
+
+      - name: Download OLR for the wave filtering
+        id: olr_download
+        continue-on-error: true
+        working-directory: main_repo
+        run: python download_olr_waves.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      - name: OLR wave anomalies
+        id: olr_anom
+        if: ${{ steps.olr_download.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python olr_wave_anomalies.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      - name: OLR wave filtering
+        if: ${{ steps.olr_anom.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python olr_wave_filter.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      - name: Download winds for the RMM index
+        id: rmm_download
+        if: ${{ steps.olr_anom.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python download_rmm_winds.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      - name: MJO RMM index
+        if: ${{ steps.rmm_download.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python mjo_rmm_index.py
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
+      # keep the intermediates out of the zarr upload below
+      - name: Remove OLR wave intermediates
+        if: ${{ always() }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: |
+          for s in ECMWF_s2s_olr ECMWF_s2s_olr_reforecast olr_anom olr_obs_leadin olr_waves; do
+            rm -rf "data/$DATE_STR/${s}_$DATE_STR.zarr"
+          done
+          rm -f data/$DATE_STR/rmm_u_*_$DATE_STR.nc
+        env:
+          DATE_STR: "${{ inputs.date_str }}"
+
       - name: Install rclone
         continue-on-error: true
         run: curl https://rclone.org/install.sh | sudo bash
@@ -290,6 +379,13 @@ jobs:
             find "$OUTPUT_DIR" -type d -iname "*.zarr" -prune -o -type f \
               ! -iname "*.nc" ! -iname "*.grib" ! -iname "*.idx" ! -iname "*.md" \
               -print | while read -r file_path; do
+              rel_path="${file_path#"$OUTPUT_DIR"/}"
+              echo "Uploading $file_path -> gs://${BUCKET}/data/${rel_path}"
+              gcloud storage cp "$file_path" "gs://${BUCKET}/data/${rel_path}"
+              echo "data/${rel_path}" >> ../uploaded_data.txt
+            done
+            # The MJO indices are the one .nc output published (olr_waves stage).
+            find "$OUTPUT_DIR" -type f -name "mjo_*_index_*.nc" | while read -r file_path; do
               rel_path="${file_path#"$OUTPUT_DIR"/}"
               echo "Uploading $file_path -> gs://${BUCKET}/data/${rel_path}"
               gcloud storage cp "$file_path" "gs://${BUCKET}/data/${rel_path}"

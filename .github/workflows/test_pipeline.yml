@@ -493,12 +493,6 @@ jobs:
         working-directory: main_repo
         run: python olr_wave_filter.py
 
-      - name: MJO OLR index
-        if: ${{ steps.olr_anom.outcome == 'success' }}
-        continue-on-error: true
-        working-directory: main_repo
-        run: python mjo_olr_index.py
-
       - name: Download winds for the RMM index
         id: rmm_download
         if: ${{ steps.olr_anom.outcome == 'success' }}

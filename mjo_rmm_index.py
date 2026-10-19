@@ -1,9 +1,9 @@
 """
 RMM index (Real-time Multivariate MJO, after Wheeler and Hendon 2004) for one
 ECMWF extended-range forecast, and a phase diagram of every ensemble member,
-the ensemble mean and the recent observed track. Unlike the OLR-only index of
-mjo_olr_index.py it needs no wavenumber-frequency filter: the MJO is picked
-out by combining OLR with the 850 and 200 hPa zonal wind.
+the ensemble mean and the recent observed track. It needs no
+wavenumber-frequency filter: the MJO is picked out by combining OLR with the
+850 and 200 hPa zonal wind.
 
   1. Fields: OLR, u850 and u200 averaged over 15S-15N, as anomalies from the
      annual cycle (olr_wave_anomalies.fit_annual_cycle, ERA5), the forecasts
@@ -53,7 +53,6 @@ import pandas as pd
 import xarray as xr
 
 import olr_wave_anomalies as wa
-from mjo_olr_index import phase, phase_axes
 from olr_obs_archive import OUT_DIR as OBS_DIR
 
 # ============================================================
@@ -200,6 +199,11 @@ def align_to(ours, bom):
     return r
 
 
+def phase(x, y):
+    """MJO phase 1-8 of (RMM1, RMM2): 45-degree sectors, phase 1 from 180 degrees anticlockwise."""
+    return (np.floor((np.degrees(np.arctan2(y, x)) + 180) / 45).astype(int) % 8) + 1
+
+
 def compare(name, ours, bom, min_amp=1.0):
     both = ours.join(bom, how="inner", rsuffix="_bom")
     if both.empty:
@@ -274,6 +278,28 @@ def main():
 # ============================================================
 # Plot
 # ============================================================
+
+def phase_axes(ax, lim):
+    """Square RMM diagram: unit circle, the eight phase sectors and the regions of convection."""
+    ax.set_xlim(-lim, lim)
+    ax.set_ylim(-lim, lim)
+    ax.set_aspect("equal")
+    ax.add_patch(plt.Circle((0, 0), 1, fill=False, color="grey", lw=1))
+    for a in (0, 45, 90, 135):
+        r = np.radians(a)
+        ax.plot([-lim * np.cos(r) * 2, lim * np.cos(r) * 2], [-lim * np.sin(r) * 2, lim * np.sin(r) * 2],
+                color="grey", lw=0.6, zorder=0)
+    for p in range(1, 9):
+        ang = np.radians(-180 + 45 * (p - 0.5))
+        ax.text(0.85 * lim * np.cos(ang) / max(abs(np.cos(ang)), abs(np.sin(ang))),
+                0.85 * lim * np.sin(ang) / max(abs(np.cos(ang)), abs(np.sin(ang))),
+                str(p), ha="center", va="center", fontsize=13, color="grey")
+    kw = dict(ha="center", va="center", fontsize=10, color="dimgrey")
+    ax.text(0, -lim * 0.95, "Indian Ocean", **kw)
+    ax.text(lim * 0.95, 0, "Maritime Continent", rotation=-90, **kw)
+    ax.text(0, lim * 0.95, "Western Pacific", **kw)
+    ax.text(-lim * 0.95, 0, "West. Hem. and Africa", rotation=90, **kw)
+
 
 def plot_phase(members_fc, ens_mean, is_fc, times, bom_xy, out):
     obs_xy = ens_mean[~is_fc]
