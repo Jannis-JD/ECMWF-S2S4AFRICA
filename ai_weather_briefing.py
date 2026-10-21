@@ -506,12 +506,12 @@ exceed20mm_path = prefer_04deg(f"{kenya_path}/weekly/chance_higherthan_20mm.png"
 # downscaled_onset_icpac is the default 20mm wet-spell definition. The _obs
 # keys are the observed-only CHIRPS met/pending/not-met maps from the same script.
 downscaled_picture_paths = {
-    "downscaled_onset_icpac": f"{kenya_path}/monthly/onset_downscaled.png",
-    "downscaled_onset_icpac10mm": f"{kenya_path}/monthly/onset_downscaled_icpac10mm.png",
-    "downscaled_onset_accum": f"{kenya_path}/monthly/onset_downscaled_accum.png",
-    "downscaled_onset_icpac_obs": f"{kenya_path}/monthly/onset_chirps_observed.png",
-    "downscaled_onset_icpac10mm_obs": f"{kenya_path}/monthly/onset_chirps_observed_icpac10mm.png",
-    "downscaled_onset_accum_obs": f"{kenya_path}/monthly/onset_chirps_observed_accum.png",
+    "downscaled_onset_icpac": f"{kenya_dwn_path}/monthly/onset_downscaled.png",
+    "downscaled_onset_icpac10mm": f"{kenya_dwn_path}/monthly/onset_downscaled_icpac10mm.png",
+    "downscaled_onset_accum": f"{kenya_dwn_path}/monthly/onset_downscaled_accum.png",
+    "downscaled_onset_icpac_obs": f"{kenya_dwn_path}/monthly/onset_chirps_observed.png",
+    "downscaled_onset_icpac10mm_obs": f"{kenya_dwn_path}/monthly/onset_chirps_observed_icpac10mm.png",
+    "downscaled_onset_accum_obs": f"{kenya_dwn_path}/monthly/onset_chirps_observed_accum.png",
     "dwn_wet_5": f"{kenya_path}/weekly/prob_wetspell_5days_downscaled.png",
     "dwn_wet_7": f"{kenya_path}/weekly/prob_wetspell_7days_downscaled.png",
     "dwn_wet_median": f"{kenya_path}/weekly/median_wetspell_length_downscaled.png",
@@ -521,15 +521,15 @@ downscaled_picture_paths = {
     "chance_20mm": f"{kenya_path}/weekly/weekly_chance_higherthan_20mm_downscaled.png",
     # CHIRPS climatology counterparts (chirps_agro_climatology.py): the
     # forecast key + "_clim"
-    "downscaled_onset_icpac_clim": f"{kenya_path}/monthly/onset_chirps_climatology.png",
-    "downscaled_onset_icpac10mm_clim": f"{kenya_path}/monthly/onset_chirps_climatology_icpac10mm.png",
-    "downscaled_onset_accum_clim": f"{kenya_path}/monthly/onset_chirps_climatology_accum.png",
-    "dwn_wet_5_clim": f"{kenya_path}/weekly/prob_wetspell_5days_chirps_clim.png",
-    "dwn_wet_7_clim": f"{kenya_path}/weekly/prob_wetspell_7days_chirps_clim.png",
-    "dwn_wet_median_clim": f"{kenya_path}/weekly/median_wetspell_length_chirps_clim.png",
-    "dwn_dry_5_clim": f"{kenya_path}/weekly/prob_dryspell_5days_chirps_clim.png",
-    "dwn_dry_7_clim": f"{kenya_path}/weekly/prob_dryspell_7days_chirps_clim.png",
-    "dwn_dry_median_clim": f"{kenya_path}/weekly/median_dryspell_length_chirps_clim.png",
+    "downscaled_onset_icpac_clim": f"{kenya_dwn_path}/monthly/onset_chirps_climatology.png",
+    "downscaled_onset_icpac10mm_clim": f"{kenya_dwn_path}/monthly/onset_chirps_climatology_icpac10mm.png",
+    "downscaled_onset_accum_clim": f"{kenya_dwn_path}/monthly/onset_chirps_climatology_accum.png",
+    "dwn_wet_5_clim": f"{kenya_dwn_path}/weekly/prob_wetspell_5days_chirps_clim.png",
+    "dwn_wet_7_clim": f"{kenya_dwn_path}/weekly/prob_wetspell_7days_chirps_clim.png",
+    "dwn_wet_median_clim": f"{kenya_dwn_path}/weekly/median_wetspell_length_chirps_clim.png",
+    "dwn_dry_5_clim": f"{kenya_dwn_path}/weekly/prob_dryspell_5days_chirps_clim.png",
+    "dwn_dry_7_clim": f"{kenya_dwn_path}/weekly/prob_dryspell_7days_chirps_clim.png",
+    "dwn_dry_median_clim": f"{kenya_dwn_path}/weekly/median_dryspell_length_chirps_clim.png",
 }
 
 # Great Horn tercile plot (regional counterpart to the Kenya-only ECMWF_tercile_plot)

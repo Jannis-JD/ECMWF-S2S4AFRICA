@@ -6,7 +6,10 @@ longitude (the wavenumber-frequency filter needs the full circle):
 
   data/<date>/ECMWF_s2s_olr_<date>.zarr
       the forecast: every member, lead days 1-46, from dynamical.org
-      (ecmwf-ifs-ens-forecast-46-day-daily-1-5-degree).
+      (ecmwf-ifs-ens-forecast-46-day-daily-1-5-degree). dynamical runs ~48 h
+      behind, so the daily run's init usually isn't there yet: then it comes
+      from the ECDS s2s-forecasts top net thermal radiation instead
+      (needs CDSAPI_KEY), the same 24 h means on the same grid.
   data/<date>/ECMWF_s2s_olr_reforecast_<date>.zarr
       the reforecasts nearest this calendar day in each year 2006-2024
       (Planette, via gef.load_reforecast), ensemble mean -- for the
@@ -21,6 +24,7 @@ Run olr_obs_archive.py first so the archive reaches as far as ERA5T allows.
 
 Env vars:
     DATE_STR      forecast init date, defaults to today-2
+    CDSAPI_KEY    ECDS key, only needed when dynamical doesn't have the init yet
     OLR_OBS_DIR   ERA5 OLR archive folder (default olr_obs/), see olr_obs_archive.py
 
 Lead time convention: step N is the daily mean over the N-th forecast day,
@@ -31,6 +35,7 @@ reforecasts alike. The observed days are 23-23 UTC (see olr_obs_archive.py).
 import os
 import shutil
 import sys
+import tempfile
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -87,22 +92,77 @@ def write(ds, out):
 # 1. Forecast
 # ============================================================
 
+def forecast_from_dynamical(olr):
+    """The INIT run from dynamical as (step, number, latitude, longitude), or
+    None when dynamical doesn't have it (yet) or has it only partly."""
+    if INIT not in olr.get_index("init_time"):
+        print(f"dynamical has no {DAILY_DATASET} run started {date_str}")
+        return None
+    fc = olr.sel(init_time=INIT).sel(lead_time=olr.lead_time > pd.Timedelta(0)).compute()
+    if fc.isnull().all(("ensemble_member", "latitude", "longitude")).any():
+        print(f"the {date_str} run is incomplete on dynamical (some lead days are all missing)")
+        return None
+    fc = fc.rename({"ensemble_member": "number", "lead_time": "step"})
+    fc = fc.drop_vars([c for c in fc.coords if c not in fc.dims and c != "init_time"])
+    fc.attrs = {**OLR_ATTRS, "comment": "-1 x dynamical net_long_wave_radiation_flux_top_of_atmosphere; "
+                                        "step N = mean over 00-24 UTC on valid_date"}
+    return fc
+
+
+def forecast_from_ecds():
+    """The INIT run from the ECDS s2s-forecasts dataset (as download_s2s_legacy.py
+    fetches it), shaped like forecast_from_dynamical's. top_net_thermal_radiation
+    is accumulated from the init in J m-2, negative upward, so the mean over
+    day N is minus the difference between hours 24(N-1) and 24N over 86400 s."""
+    import cdsapi
+
+    client = cdsapi.Client(url="https://ecds.ecmwf.int/api", key=os.environ["CDSAPI_KEY"])
+    request = {
+        "origin": "ecmwf",
+        "year": date_str[:4],
+        "month": date_str[5:7],
+        "day": date_str[8:],
+        "time": "00:00",
+        "data_format": "grib",
+        "level_type": "single_level",
+        "variable": ["top_net_thermal_radiation"],
+        "leadtime_hour": ["0/to/1104/by/24"],
+        "area": [LAT_MAX, -180, -LAT_MAX, 178.5],
+    }
+    with tempfile.TemporaryDirectory(dir=path) as tmp:
+        members = []
+        for ftype in ("control_forecast", "perturbed_forecast"):
+            grib = os.path.join(tmp, f"{ftype}.grib")
+            print(f"Requesting the {ftype} OLR from ECDS")
+            client.retrieve("s2s-forecasts", request | {"forecast_type": ftype}).download(grib)
+            ttr = xr.open_dataset(grib, engine="cfgrib", indexpath="").ttr.load()
+            members.append(ttr if "number" in ttr.dims else ttr.expand_dims("number"))
+    ttr = xr.concat(members, dim="number").sortby("number")
+
+    fc = -ttr.diff("step", label="upper") / 86400.0
+    fc = fc.assign_coords(longitude=((fc.longitude + 180) % 360) - 180)
+    fc = fc.sortby("longitude").sortby("latitude", ascending=False)
+    fc = fc.drop_vars([c for c in fc.coords if c not in fc.dims])
+    fc = fc.assign_coords(init_time=INIT).transpose("step", "number", "latitude", "longitude")
+    expected = {"step": 46, "number": 101, "latitude": int(2 * LAT_MAX / 1.5) + 1, "longitude": 240}
+    if dict(fc.sizes) != expected or fc.isnull().any():
+        raise RuntimeError(f"unexpected ECDS OLR for {date_str}: sizes {dict(fc.sizes)}, expected {expected}")
+    fc.attrs = {**OLR_ATTRS, "comment": "-1 x ECDS s2s-forecasts top_net_thermal_radiation, de-accumulated; "
+                                        "step N = mean over 00-24 UTC on valid_date"}
+    return fc.astype("float32")
+
+
 def get_forecast(olr):
     out = f"{path}ECMWF_s2s_olr_{date_str}.zarr"
     if os.path.exists(out):
         print(f"Forecast already there: {out}")
         return
-    if INIT not in olr.get_index("init_time"):
-        raise RuntimeError(f"dynamical has no {DAILY_DATASET} run started {date_str}")
-    fc = olr.sel(init_time=INIT).sel(lead_time=olr.lead_time > pd.Timedelta(0)).compute()
-    if fc.isnull().all(("ensemble_member", "latitude", "longitude")).any():
-        raise RuntimeError(f"the {date_str} run is incomplete on dynamical (some lead days are all missing)")
-    fc = fc.rename({"ensemble_member": "number", "lead_time": "step"})
-    fc = fc.drop_vars([c for c in fc.coords if c not in fc.dims and c != "init_time"])
+    fc = forecast_from_dynamical(olr)
+    if fc is None:
+        print("Falling back to ECDS for the forecast")
+        fc = forecast_from_ecds()
     fc = fc.assign_coords(valid_date=("step", (INIT + fc.step.to_index() - pd.Timedelta(days=1)).values))
     fc.name = "olr"
-    fc.attrs = {**OLR_ATTRS, "comment": "-1 x dynamical net_long_wave_radiation_flux_top_of_atmosphere; "
-                                        "step N = mean over 00-24 UTC on valid_date"}
     write(fc.to_dataset(), out)
 
 
