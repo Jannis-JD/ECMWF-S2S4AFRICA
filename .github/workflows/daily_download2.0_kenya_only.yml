@@ -528,10 +528,22 @@ jobs:
           DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
 
       - name: OLR wave filtering
+        id: olr_filter
         if: ${{ steps.olr_anom.outcome == 'success' }}
         continue-on-error: true
         working-directory: main_repo
         run: python olr_wave_filter.py
+        env:
+          DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
+
+      # Rainfall anomaly maps over East Africa / the western Indian Ocean with
+      # the MJO (weekly) and Kelvin (daily) filtered OLR contoured on top.
+      # Needs olr_waves_<date>.zarr, so it runs before the intermediates go.
+      - name: Rainfall anomaly maps with wave OLR
+        if: ${{ steps.olr_filter.outcome == 'success' }}
+        continue-on-error: true
+        working-directory: main_repo
+        run: python olr_wave_rain_maps.py
         env:
           DATE_STR: ${{ steps.ecmwf_date.outputs.date }}
 
