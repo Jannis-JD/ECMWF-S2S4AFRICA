@@ -7,6 +7,9 @@ of the 1.5 degree rows, as in Wheeler and Hendon 2004), every longitude:
   data/<date>/rmm_u_forecast_<date>.nc
       the forecast: every member, days 1-46, from dynamical.org
       (ecmwf-ifs-ens-forecast-46-day-daily-1-5-degree, pressure_level group).
+      dynamical runs ~48 h behind, so the daily run's init usually isn't
+      there yet: then it comes from the ECDS s2s-forecasts u_component_of_wind
+      instead (needs CDSAPI_KEY), the same 00 UTC instants on the same grid.
   data/<date>/rmm_u_reforecast_<date>.nc
       the reforecasts nearest this calendar day in each year 2006-2024
       (Planette, via gef.load_reforecast), ensemble mean, days 1-45 -- for the
@@ -23,6 +26,7 @@ archive reaches as far as ERA5T allows.
 Env vars:
     DATE_STR      forecast init date, defaults to today-2
     OLR_OBS_DIR   ERA5 archive folder (default olr_obs/), see rmm_wind_archive.py
+    CDSAPI_KEY    ECDS key, only needed when dynamical doesn't have the init yet
 
 Lead time convention: the model winds are instantaneous, at 00 UTC of
 init + 0, 1, 2, ... days (checked against ERA5 for the reforecasts: lead 0 is
@@ -34,6 +38,7 @@ The reforecasts stop at init + 45 days, hence 45 days.
 
 import os
 import sys
+import tempfile
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -102,21 +107,79 @@ def write(ds, out):
 # 1. Forecast
 # ============================================================
 
+def forecast_from_dynamical(u):
+    """The INIT run from dynamical, 15S-15N mean daily means as (number, step,
+    pressure_level, longitude), or None when dynamical doesn't have it (yet)
+    or has it only partly."""
+    if INIT not in u.get_index("init_time"):
+        print(f"dynamical has no {DAILY_DATASET} run started {date_str}")
+        return None
+    fc = u.sel(init_time=INIT).compute().mean("latitude")
+    if fc.isnull().all(("ensemble_member", "longitude")).any():
+        print(f"the {date_str} run is incomplete on dynamical (some lead days are all missing)")
+        return None
+    fc = daily_means(fc.sortby("lead_time"), "lead_time").rename({"ensemble_member": "number"})
+    fc = fc.drop_vars([c for c in fc.coords if c not in fc.dims and c != "init_time"])
+    fc.attrs = {"comment": "dynamical wind_u; step N = mean of the 00 UTC instants at init + N - 1 and init + N days"}
+    return fc
+
+
+def forecast_from_ecds():
+    """The INIT run from the ECDS s2s-forecasts dataset (as download_s2s_legacy.py
+    fetches it), shaped like forecast_from_dynamical's: the 00 UTC instants at
+    init + 0 .. 46 days, 15S-15N mean, then daily means."""
+    import cdsapi
+
+    client = cdsapi.Client(url="https://ecds.ecmwf.int/api", key=os.environ["CDSAPI_KEY"])
+    request = {
+        "origin": "ecmwf",
+        "year": date_str[:4],
+        "month": date_str[5:7],
+        "day": date_str[8:],
+        "time": "00:00",
+        "data_format": "grib",
+        "level_type": "pressure",
+        "level_value": [f"{level}_hpa" for level in LEVELS],
+        "variable": ["u_component_of_wind"],
+        "leadtime_hour": ["0/to/1104/by/24"],
+        "area": [LAT_MAX, -180, -LAT_MAX, 178.5],
+    }
+    with tempfile.TemporaryDirectory(dir=path) as tmp:
+        members = []
+        for ftype in ("control_forecast", "perturbed_forecast"):
+            grib = os.path.join(tmp, f"{ftype}.grib")
+            print(f"Requesting the {ftype} winds from ECDS")
+            client.retrieve("s2s-forecasts", request | {"forecast_type": ftype}).download(grib)
+            u = xr.open_dataset(grib, engine="cfgrib", indexpath="").u.load()
+            members.append(u if "number" in u.dims else u.expand_dims("number"))
+    u = xr.concat(members, dim="number").sortby("number").rename({"isobaricInhPa": "pressure_level"})
+    u = u.assign_coords(pressure_level=u.pressure_level.astype(int),
+                        longitude=((u.longitude + 180) % 360) - 180).sortby("longitude")
+
+    fc = daily_means(u.mean("latitude").sortby("step"), "step")
+    fc = fc.drop_vars([c for c in fc.coords if c not in fc.dims])
+    fc = fc.assign_coords(init_time=INIT).transpose("number", "step", "pressure_level", "longitude")
+    expected = {"number": 101, "step": 46, "pressure_level": len(LEVELS), "longitude": 240}
+    if dict(fc.sizes) != expected or fc.isnull().any():
+        raise RuntimeError(f"unexpected ECDS winds for {date_str}: sizes {dict(fc.sizes)}, expected {expected}")
+    fc.attrs = {"comment": "ECDS s2s-forecasts u_component_of_wind; step N = mean of the 00 UTC instants "
+                           "at init + N - 1 and init + N days"}
+    return fc
+
+
 def get_forecast(u):
     out = f"{path}rmm_u_forecast_{date_str}.nc"
     if os.path.exists(out):
         print(f"Forecast already there: {out}")
         return
-    if INIT not in u.get_index("init_time"):
-        raise RuntimeError(f"dynamical has no {DAILY_DATASET} run started {date_str}")
-    fc = u.sel(init_time=INIT).compute().mean("latitude")
-    if fc.isnull().all(("ensemble_member", "longitude")).any():
-        raise RuntimeError(f"the {date_str} run is incomplete on dynamical (some lead days are all missing)")
-    fc = daily_means(fc.sortby("lead_time"), "lead_time").rename({"ensemble_member": "number"})
-    fc = fc.drop_vars([c for c in fc.coords if c not in fc.dims and c != "init_time"])
+    fc = forecast_from_dynamical(u)
+    if fc is None:
+        print("Falling back to ECDS for the forecast")
+        fc = forecast_from_ecds()
+    comment = fc.attrs["comment"]
     fc = fc.assign_coords(valid_date=("step", (INIT + fc.step.to_index() - pd.Timedelta(days=1)).values))
     fc = by_level(fc.transpose("number", "step", "pressure_level", "longitude"))
-    fc.attrs = {"comment": "dynamical wind_u; step N = mean of the 00 UTC instants at init + N - 1 and init + N days"}
+    fc.attrs = {"comment": comment}
     write(fc, out)
 
 
