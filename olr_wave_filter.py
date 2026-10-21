@@ -333,7 +333,8 @@ def main():
 # Plot
 # ============================================================
 
-CONTOURS = {"MJO": ("k", 5), "Kelvin": ("tab:green", 10), "ER": ("tab:purple", 5), "MRG_TD": ("tab:orange", 10)}
+# ER is still filtered (and in the zarr) but left out of every plot: little link with East African rainfall
+CONTOURS = {"MJO": ("k", 5), "Kelvin": ("tab:green", 10), "MRG_TD": ("tab:orange", 10)}
 
 
 def plot_waves(ds, unfiltered, out):
@@ -343,7 +344,7 @@ def plot_waves(ds, unfiltered, out):
             ("control", unfiltered.sel(number=0), "member 0 (control)"))
     for r, (suffix, shade, label) in enumerate(rows):
         shade = lon_0_360(equatorial_mean(shade.drop_vars("number", errors="ignore"), 10))
-        for c, pair in enumerate((("MJO", "Kelvin"), ("ER", "MRG_TD"))):
+        for c, pair in enumerate((("MJO", "Kelvin"), ("MRG_TD",))):
             ax = axes[r, c]
             pc = hovmoeller(ax, shade, vmax=40)
             pc.set_alpha(0.6)
@@ -376,7 +377,7 @@ def plot_waves(ds, unfiltered, out):
 NCICS_LAT = 5
 NCICS_LEVEL = 16
 NCICS_WEEKS = (12, 4)
-NCICS_CONTOURS = {"Kelvin": "blue", "ER": "red", "MJO": "black", "Low": "darkviolet"}
+NCICS_CONTOURS = {"Kelvin": "blue", "MJO": "black", "Low": "darkviolet"}
 
 
 def ncics_colormap():
@@ -454,7 +455,7 @@ PROB_WEEKS_BEFORE = 12      # observed weeks shown, as on the NCICS monitor
 AMP_THRESHOLD = 1.0               # forecast agreement
 OBS_AMP_THRESHOLD = 2.0           # observed line: ~16 W m-2 for Kelvin, close to the NCICS +-16 contour
 OBS_SUFFIX = f"_amp{OBS_AMP_THRESHOLD:g}".replace(".", "p")   # dataset variable suffix
-PROB_WAVES = ("Kelvin", "ER", "MJO")   # Low left out: no high-pass, so the drop to zero padding after
+PROB_WAVES = ("Kelvin", "MJO")   # Low left out: no high-pass, so the drop to zero padding after
                                        # day 46 makes B (and the amplitude) large at the end of the forecast
 STD_YEARS = ("2007", "2021")     # ERA5 years for the amplitude scale (a year off each archive end)
 STD_HALF_WINDOW = 60             # calendar days either side of the forecast's middle
@@ -494,7 +495,7 @@ def plot_probability(ds, unfiltered, out):
     cb = fig.colorbar(pc, ax=axes, orientation="horizontal", shrink=0.6, extend="both", ticks=ticks)
     cb.set_label("ensemble-mean OLR anomaly (W m$^{-2}$)", fontsize=15)
     cb.ax.tick_params(labelsize=14)
-    fig.suptitle(f"ECMWF extended range from {date_str}: ensemble agreement on wave activity, "
+    fig.suptitle(f"ECMWF extended range from {date_str}: ensemble agreement on wave activity,\n"
                  f"{NCICS_LAT}S-{NCICS_LAT}N (ERA5 before the line)", fontsize=19)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     fig.savefig(out, dpi=110)
@@ -512,7 +513,7 @@ def plot_probability(ds, unfiltered, out):
 # forecast week (daily dots would ring the whole circle for a Kelvin wave,
 # weekly means would collapse it to the centre).
 KENYA_POINT = 37.5                   # middle of KENYA_LON (33-42E) on the 1.5 degree grid
-PHASE_WAVES = ("Kelvin", "ER", "MJO")
+PHASE_WAVES = ("Kelvin", "MJO")
 PHASE_OBS_DAYS = 30                  # observed days drawn before the forecast
 PHASE_WEEK_DAYS = (3, 10, 17, 24, 31, 38)   # days after init: lead days 4, 11, ..., 39, mid-week
 PHASE_LIM = 4.5
