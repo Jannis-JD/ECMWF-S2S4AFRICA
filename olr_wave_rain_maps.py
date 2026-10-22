@@ -8,6 +8,10 @@ top, from what olr_wave_filter.py wrote to data/<date>/olr_waves_<date>.zarr:
   plots/olr_waves/<date>/rain_anomaly_kelvin_daily.png
       days 1-10, daily rainfall anomaly and Kelvin-filtered OLR (a Kelvin
       wave passes in a few days, so weekly means would average it out)
+  plots/olr_waves/<date>/rain_anomaly_mjo_daily.gif
+      an animation, one frame per forecast day (1-46), of the daily rainfall
+      anomaly and MJO-filtered OLR, over a wider 20-120E so the MJO can be
+      followed across the Indian Ocean
 
 Both are the ensemble mean, which is also what the filtered OLR is (the
 filtering being linear). The rainfall anomaly is the forecast minus the
@@ -75,10 +79,13 @@ path = f'data/{date_str}/'
 plot_path = f'plots/olr_waves/{date_str}/'
 
 INIT = pd.Timestamp(date_str)
-EXTENT = (20, 80, -19.5, 19.5)              # lon W, lon E, lat S, lat N
+MAP_EXTENT = (20, 80, -19.5, 19.5)          # lon W, lon E, lat S, lat N: the static maps
+ANIM_EXTENT = (20, 120, -19.5, 19.5)        # the animation, wide enough to follow the MJO east
+DATA_EXTENT = ANIM_EXTENT                   # rainfall is read once over both
 N_WEEKS = 4
 N_DAYS = 10
 AGREEMENT = 0.66                            # share of members for the dots and the red line
+ANIM_FPS = 2                                # animation frames (forecast days) per second
 
 # filtered OLR anomaly contours (W m-2): negative = enhanced convection
 WAVE_LEVELS = {"MJO": (5, 10, 20), "Kelvin": (4, 8, 16)}
@@ -96,8 +103,8 @@ STRIP_LEVELS = [-1, -AGREEMENT, -0.5, -0.33, 0.33, 0.5, AGREEMENT, 1]
 
 def forecast_rain_members():
     """Daily rainfall (mm day-1) of every member as (number, step, latitude,
-    longitude), step N = day N, over EXTENT."""
-    lon_w, lon_e, lat_s, lat_n = EXTENT
+    longitude), step N = day N, over DATA_EXTENT."""
+    lon_w, lon_e, lat_s, lat_n = DATA_EXTENT
     parts = []
     for store in (f"ECMWF_s2s_precip_alt_{date_str}.zarr", f"ECMWF_s2s_precip_{date_str}.zarr"):
         tp = xr.open_zarr(f"{path}{store}").tp
@@ -110,7 +117,7 @@ def forecast_rain_members():
 def reforecast_rain_runs():
     """Daily rainfall (mm day-1) of every reforecast run nearest this calendar
     day in each year, as (run, step, latitude, longitude)."""
-    lon_w, lon_e, lat_s, lat_n = EXTENT
+    lon_w, lon_e, lat_s, lat_n = DATA_EXTENT
     rf = gef.load_reforecast(date_str, "single", "pr",
                              bbox={"lat1": lat_n, "lon1": lon_w, "lat2": lat_s, "lon2": lon_e},
                              time_range=slice(0, 46), all_years=True)
@@ -144,10 +151,10 @@ def rain_fields():
     return daily, weekly
 
 
-def wave_fields(wave, valid_dates):
-    """Ensemble-mean filtered OLR over (a bit more than) EXTENT, and the 5S-5N
+def wave_fields(wave, valid_dates, extent):
+    """Ensemble-mean filtered OLR over (a bit more than) extent, and the 5S-5N
     member shares active in the enhanced / suppressed half, for valid_dates."""
-    lon_w, lon_e, lat_s, lat_n = EXTENT
+    lon_w, lon_e, lat_s, lat_n = extent
     ds = xr.open_zarr(f"{path}olr_waves_{date_str}.zarr").sel(time=valid_dates)
     olr = ds[f"{wave}_mean"].sel(latitude=slice(lat_n + 3, lat_s - 3), longitude=slice(lon_w - 3, lon_e + 3))
     lon = slice(lon_w - 1.5, lon_e + 1.5)
@@ -160,8 +167,13 @@ def wave_fields(wave, valid_dates):
 # Plot
 # ============================================================
 
-def basemap(ax, left_labels):
-    ax.set_extent(EXTENT, crs=ccrs.PlateCarree())
+def clip(field, extent):
+    lon_w, lon_e, lat_s, lat_n = extent
+    return field.sel(latitude=slice(lat_n, lat_s), longitude=slice(lon_w, lon_e))
+
+
+def basemap(ax, left_labels, extent):
+    ax.set_extent(extent, crs=ccrs.PlateCarree())
     ax.coastlines(resolution="50m", linewidth=0.7, color="#333333")
     ax.add_feature(cfeature.BORDERS, linestyle=":", linewidth=0.8, color="#333333")
     gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="gray", alpha=0.6, linestyle="--")
@@ -222,7 +234,7 @@ def draw_combined(ax, rain, olr, wave):
                        linewidths=1.8, linestyles=ls, transform=ccrs.PlateCarree())
 
 
-def draw_strip(ax, prob, bottom_labels, side_label):
+def draw_strip(ax, prob, bottom_labels, side_label, extent):
     """Signed share of members active in the dominant half of the wave cycle:
     + enhanced, - suppressed, along longitude."""
     signed = xr.where(prob.enhanced >= prob.suppressed, prob.enhanced, -prob.suppressed)
@@ -230,12 +242,13 @@ def draw_strip(ax, prob, bottom_labels, side_label):
     lon = signed.longitude.values
     edges = np.append(lon - 0.75, lon[-1] + 0.75)
     pc = ax.pcolormesh(edges, [0, 1], signed.values[None, :], cmap=cmap, norm=norm)
-    ax.set_xlim(EXTENT[0], EXTENT[1])
+    ax.set_xlim(extent[0], extent[1])
     ax.set_yticks([])
-    ax.set_xticks(range(30, 80, 10))
+    ticks = range(extent[0] + 10, extent[1], 10)
+    ax.set_xticks(ticks)
     ax.tick_params(labelsize=8, labelbottom=bottom_labels, length=2)
     if bottom_labels:
-        ax.set_xticklabels([f"{x}°E" for x in range(30, 80, 10)])
+        ax.set_xticklabels([f"{x}°E" for x in ticks])
     if side_label:
         ax.text(-0.01, 0.5, "5S-5N", transform=ax.transAxes, ha="right", va="center", fontsize=7)
     return pc
@@ -250,7 +263,8 @@ def make_figure(panels, wave, nrows, ncols, title, out, figsize, margins):
                             wspace=0.1, hspace=hspace)
     for i, (rain, olr, prob, label) in enumerate(panels):
         ax = fig.add_subplot(grid[i // ncols, i % ncols], projection=ccrs.PlateCarree())
-        basemap(ax, left_labels=i % ncols == 0)
+        basemap(ax, left_labels=i % ncols == 0, extent=MAP_EXTENT)
+        rain = clip(rain, MAP_EXTENT)
         pc = draw_rain(ax, rain)
         draw_wave(ax, olr, wave)
         draw_combined(ax, rain, olr, wave)
@@ -261,7 +275,8 @@ def make_figure(panels, wave, nrows, ncols, title, out, figsize, margins):
         pos = ax.get_position()
         strip_h = 0.06 * pos.height
         sax = fig.add_axes([pos.x0, pos.y0 - strip_h - 0.003, pos.width, strip_h])
-        strip = draw_strip(sax, prob, bottom_labels=i // ncols == nrows - 1, side_label=i % ncols == 0)
+        strip = draw_strip(sax, prob, bottom_labels=i // ncols == nrows - 1, side_label=i % ncols == 0,
+                           extent=MAP_EXTENT)
 
     cax = fig.add_axes([0.06, 0.07, 0.42, 0.012])
     cb = fig.colorbar(pc, cax=cax, orientation="horizontal", ticks=RAIN_LEVELS, extend="both")
@@ -294,7 +309,7 @@ def plot_weekly_mjo(weekly):
     panels = []
     for week, rain in enumerate(weekly):
         dates = rain.attrs["dates"]
-        olr, prob = wave_fields("MJO", dates)
+        olr, prob = wave_fields("MJO", dates, MAP_EXTENT)
         label = f"Week {week + 1}: {dates[0]:%d %b} - {dates[-1]:%d %b}"
         panels.append((rain, olr.mean("time"), prob.mean("time"), label))
     make_figure(panels, "MJO", 2, 2, f"ECMWF weekly rainfall anomaly and the MJO, init {date_str}",
@@ -304,14 +319,79 @@ def plot_weekly_mjo(weekly):
 def plot_daily_kelvin(daily):
     daily = daily.isel(step=slice(0, N_DAYS))
     dates = pd.DatetimeIndex(daily.valid_date.values)
-    olr, prob = wave_fields("Kelvin", dates)
+    olr, prob = wave_fields("Kelvin", dates, MAP_EXTENT)
     panels = [(daily.isel(step=i), olr.isel(time=i), prob.isel(time=i), f"Day {i + 1}: {d:%a %d %b}")
               for i, d in enumerate(dates)]
     make_figure(panels, "Kelvin", 2, 5, f"ECMWF daily rainfall anomaly and Kelvin waves, init {date_str}",
                 f"{plot_path}rain_anomaly_kelvin_daily.png", figsize=(20, 9.5), margins=(0.86, 0.2, 0.35))
 
 
+def plot_mjo_animation(daily):
+    """One frame per forecast day: the daily rainfall anomaly with the MJO OLR,
+    agreement dots, red outlines and the 5S-5N strip, over ANIM_EXTENT."""
+    from matplotlib.animation import FuncAnimation, PillowWriter
+
+    rain = clip(daily, ANIM_EXTENT)
+    dates = pd.DatetimeIndex(rain.valid_date.values)
+    olr, prob = wave_fields("MJO", dates, ANIM_EXTENT)
+    n = len(dates)
+
+    fig = plt.figure(figsize=(13, 7.6))
+    ax = fig.add_axes([0.05, 0.22, 0.92, 0.6], projection=ccrs.PlateCarree())
+    basemap(ax, left_labels=True, extent=ANIM_EXTENT)
+    ax.apply_aspect()
+    pos = ax.get_position()
+    strip_h = 0.05 * pos.height
+    sax = fig.add_axes([pos.x0, pos.y0 - strip_h - 0.004, pos.width, strip_h])
+
+    cmap, norm = rain_norm()
+    cax = fig.add_axes([0.08, 0.1, 0.38, 0.015])
+    cb = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax, orientation="horizontal",
+                      ticks=RAIN_LEVELS, extend="both")
+    cb.set_label("rainfall anomaly (mm day$^{-1}$), ensemble mean\n"
+                 "vs. the model's 2006-2024 reforecast climate", fontsize=9)
+    cb.ax.tick_params(labelsize=8)
+    cmap, norm = strip_norm()
+    cax = fig.add_axes([0.56, 0.1, 0.38, 0.015])
+    cs = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax, orientation="horizontal",
+                      ticks=STRIP_LEVELS, format=lambda x, _: f"{abs(x):.0%}")
+    cs.set_label("strip: share of members with an active MJO (amplitude > 1) at 5S-5N\n"
+                 "suppressed half (orange)  |  enhanced half (purple)", fontsize=9)
+    cs.ax.tick_params(labelsize=8)
+
+    lv = ", ".join(str(v) for v in WAVE_LEVELS["MJO"])
+    cut = combined_cut("MJO")
+    fig.text(0.5, 0.985, f"ECMWF daily rainfall anomaly and the MJO, init {date_str}", ha="center", va="top",
+             fontsize=13)
+    fig.text(0.5, 0.945,
+             f"Black: MJO-filtered OLR anomaly at $\\pm${lv} W m$^{{-2}}$; solid = enhanced convection, "
+             f"dashed = suppressed.\n"
+             f"Dots: $\\geq${AGREEMENT:.0%} of members on the same side of the model median as the mean anomaly "
+             f"(shaded cells only).\n"
+             f"Red: $\\geq${AGREEMENT:.0%} of members wetter than the median where the MJO OLR is "
+             f"$\\leq$-{cut} W m$^{{-2}}$ (solid), or drier where it is $\\geq$+{cut} (dashed)",
+             ha="center", va="top", fontsize=9)
+
+    def frame(i):
+        ax.cla()
+        basemap(ax, left_labels=True, extent=ANIM_EXTENT)
+        day = rain.isel(step=i)
+        draw_rain(ax, day)
+        draw_wave(ax, olr.isel(time=i), "MJO")
+        draw_combined(ax, day, olr.isel(time=i), "MJO")
+        ax.set_title(f"Day {i + 1} of {n}: {dates[i]:%a %d %b %Y}", fontsize=12, fontweight="bold")
+        sax.cla()
+        draw_strip(sax, prob.isel(time=i), bottom_labels=True, side_label=True, extent=ANIM_EXTENT)
+
+    out = f"{plot_path}rain_anomaly_mjo_daily.gif"
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    FuncAnimation(fig, frame, frames=n).save(out, writer=PillowWriter(fps=ANIM_FPS), dpi=90)
+    plt.close(fig)
+    print(f"Wrote {out} ({n} frames, {os.path.getsize(out) / 1e6:.1f} MB)")
+
+
 if __name__ == "__main__":
     daily, weekly = rain_fields()
     plot_weekly_mjo(weekly)
     plot_daily_kelvin(daily)
+    plot_mjo_animation(daily)
