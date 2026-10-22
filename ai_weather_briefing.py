@@ -502,7 +502,10 @@ exceed20mm_path = prefer_04deg(f"{kenya_path}/weekly/chance_higherthan_20mm.png"
 # downscaled counterparts (Kenya only): onset maps from observed CHIRPS
 # continued with the per-member daily downscaled forecast (run_rainfall_onset.py), and dry/wet
 # spell + weekly >20mm chance maps (gef.plot_downscaled_spell_maps /
-# gef.plot_downscaled_exceedance, called from dowscale_dekade.py).
+# gef.plot_downscaled_exceedance, called from downscale_04deg_.py, or from
+# dowscale_dekade.py when the 0.4 degree downscaling didn't run). All of them are
+# under the downscaled date: forecast_04deg_dates.py keep-published removes the
+# 1.5 degree spell/20mm maps from the ECMWF date when 0.4 degree ones exist.
 # downscaled_onset_icpac is the default 20mm wet-spell definition. The _obs
 # keys are the observed-only CHIRPS met/pending/not-met maps from the same script.
 downscaled_picture_paths = {
@@ -512,13 +515,13 @@ downscaled_picture_paths = {
     "downscaled_onset_icpac_obs": f"{kenya_dwn_path}/monthly/onset_chirps_observed.png",
     "downscaled_onset_icpac10mm_obs": f"{kenya_dwn_path}/monthly/onset_chirps_observed_icpac10mm.png",
     "downscaled_onset_accum_obs": f"{kenya_dwn_path}/monthly/onset_chirps_observed_accum.png",
-    "dwn_wet_5": f"{kenya_path}/weekly/prob_wetspell_5days_downscaled.png",
-    "dwn_wet_7": f"{kenya_path}/weekly/prob_wetspell_7days_downscaled.png",
-    "dwn_wet_median": f"{kenya_path}/weekly/median_wetspell_length_downscaled.png",
-    "dwn_dry_5": f"{kenya_path}/weekly/prob_dryspell_5days_downscaled.png",
-    "dwn_dry_7": f"{kenya_path}/weekly/prob_dryspell_7days_downscaled.png",
-    "dwn_dry_median": f"{kenya_path}/weekly/median_dryspell_length_downscaled.png",
-    "chance_20mm": f"{kenya_path}/weekly/weekly_chance_higherthan_20mm_downscaled.png",
+    "dwn_wet_5": f"{kenya_dwn_path}/weekly/prob_wetspell_5days_downscaled.png",
+    "dwn_wet_7": f"{kenya_dwn_path}/weekly/prob_wetspell_7days_downscaled.png",
+    "dwn_wet_median": f"{kenya_dwn_path}/weekly/median_wetspell_length_downscaled.png",
+    "dwn_dry_5": f"{kenya_dwn_path}/weekly/prob_dryspell_5days_downscaled.png",
+    "dwn_dry_7": f"{kenya_dwn_path}/weekly/prob_dryspell_7days_downscaled.png",
+    "dwn_dry_median": f"{kenya_dwn_path}/weekly/median_dryspell_length_downscaled.png",
+    "chance_20mm": f"{kenya_dwn_path}/weekly/weekly_chance_higherthan_20mm_downscaled.png",
     # CHIRPS climatology counterparts (chirps_agro_climatology.py): the
     # forecast key + "_clim"
     "downscaled_onset_icpac_clim": f"{kenya_dwn_path}/monthly/onset_chirps_climatology.png",

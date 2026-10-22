@@ -32,13 +32,16 @@ anomaly from WINDOW_BEFORE days before the forecast to its end:
                     share of members with an active wave at 5S-5N
                     (Janiga et al. 2018 amplitude > AMP_THRESHOLD) in the enhanced /
                     suppressed half of its cycle (time, longitude)
-and in plots/olr_waves/<date>/: waves_hovmoeller.png, waves_hovmoeller_ncics_style.png
-(Carl Schreck's NCICS monitor look), waves_probability.png (ensemble
-agreement on each wave) kenya_wave_phase_<wave>.png (local phase-amplitude
-diagram at Kenya), kenya_wave_rose_<wave>.png (its weekly phase roses),
-kenya_wave_rose_daily_Kelvin.png (daily roses over the first 20 days) and
+and in plots/olr_waves/<date>/: waves_hovmoeller.png,
+waves_hovmoeller_ncics_style[_amplitude].png (Carl Schreck's NCICS monitor
+look; MJO and Kelvin contours, the Low band left out), waves_probability.png
+(ensemble agreement on each wave), kenya_wave_rose_<wave>.png (weekly phase
+roses at Kenya) and kenya_wave_rose_daily_Kelvin.png (daily roses over the
+first 20 days); the per-member <wave>_kenya_A / _B are stored for the roses.
+Switched off in main() but kept (uncomment to bring back):
+kenya_wave_phase_<wave>.png (local phase-amplitude diagram at Kenya) and
 kenya_wave_amplitude_<wave>.png (the local amplitude against time, every member
-coloured by its phase); the per-member <wave>_kenya_A / _B are stored for them.
+coloured by its phase).
 
 Env vars:
     DATE_STR      forecast init date, defaults to today-2
@@ -315,6 +318,9 @@ def main():
     ds.to_zarr(out, mode="w")
     print(f"Wrote {out}")
 
+    # Only the Hovmoellers, wave probability and phase roses are published now (with
+    # olr_wave_rain_maps.py's maps and mjo_rmm_index.py's phase diagram). The other
+    # plots are switched off but kept: uncomment a call to bring one back.
     unfiltered = xr.concat([an.obs_anom.isel(time=slice(-WINDOW_BEFORE, None)).drop_vars("source"),
                             an.fc_anom.swap_dims(step="valid_date").drop_vars("step").rename(valid_date="time")],
                            dim="time")
@@ -322,11 +328,11 @@ def main():
     plot_ncics_style(ds, unfiltered, f"{plot_path}waves_hovmoeller_ncics_style.png")
     plot_ncics_style(ds, unfiltered, f"{plot_path}waves_hovmoeller_ncics_style_amplitude.png", std=std)
     plot_probability(ds, unfiltered, f"{plot_path}waves_probability.png")
-    plot_local_phase(ds, clim_local, f"{plot_path}kenya_wave_phase_{{wave}}.png")
+    # plot_local_phase(ds, clim_local, f"{plot_path}kenya_wave_phase_{{wave}}.png")
     plot_phase_roses(ds, clim_local, f"{plot_path}kenya_wave_rose_{{wave}}.png")
     plot_phase_roses(ds, clim_local, f"{plot_path}kenya_wave_rose_daily_{{wave}}.png", days_per_rose=1,
                      n_roses=ROSE_DAILY_DAYS, waves=ROSE_DAILY_WAVES, ncols=5)
-    plot_amplitude_series(ds, clim_local, f"{plot_path}kenya_wave_amplitude_{{wave}}.png")
+    # plot_amplitude_series(ds, clim_local, f"{plot_path}kenya_wave_amplitude_{{wave}}.png")
 
 
 # ============================================================
@@ -377,7 +383,7 @@ def plot_waves(ds, unfiltered, out):
 NCICS_LAT = 5
 NCICS_LEVEL = 16
 NCICS_WEEKS = (12, 4)
-NCICS_CONTOURS = {"Kelvin": "blue", "MJO": "black", "Low": "darkviolet"}
+NCICS_CONTOURS = {"Kelvin": "blue", "MJO": "black"}   # "Low": "darkviolet" taken out
 
 
 def ncics_colormap():
