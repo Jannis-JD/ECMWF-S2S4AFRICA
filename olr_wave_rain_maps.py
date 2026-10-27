@@ -172,14 +172,14 @@ def clip(field, extent):
     return field.sel(latitude=slice(lat_n, lat_s), longitude=slice(lon_w, lon_e))
 
 
-def basemap(ax, left_labels, extent):
+def basemap(ax, left_labels, extent, fs=1.0):
     ax.set_extent(extent, crs=ccrs.PlateCarree())
     ax.coastlines(resolution="50m", linewidth=0.7, color="#333333")
     ax.add_feature(cfeature.BORDERS, linestyle=":", linewidth=0.8, color="#333333")
     gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="gray", alpha=0.6, linestyle="--")
     gl.top_labels = gl.right_labels = gl.bottom_labels = False   # longitudes go on the strip
     gl.left_labels = left_labels
-    gl.ylabel_style = {"size": 8}
+    gl.ylabel_style = {"size": 8 * fs}
 
 
 def rain_norm():
@@ -205,7 +205,7 @@ def draw_rain(ax, rain):
     return pc
 
 
-def draw_wave(ax, olr, wave):
+def draw_wave(ax, olr, wave, fs=1.0):
     levels = WAVE_LEVELS[wave]
     widths = [0.9, 1.5, 2.2]                 # thicker for a stronger wave
     for sign, ls in ((-1, "solid"), (1, "dashed")):
@@ -214,7 +214,7 @@ def draw_wave(ax, olr, wave):
         lv, lw = (sorted(-np.array(levels)), widths[::-1]) if sign < 0 else (list(levels), widths)
         cs = ax.contour(olr.longitude, olr.latitude, olr, levels=lv, colors="k", linestyles=ls,
                         linewidths=lw, transform=ccrs.PlateCarree())
-        ax.clabel(cs, fmt="%d", fontsize=7, inline=True)
+        ax.clabel(cs, fmt="%d", fontsize=7 * fs, inline=True)
 
 
 def combined_cut(wave):
@@ -234,7 +234,7 @@ def draw_combined(ax, rain, olr, wave):
                        linewidths=1.8, linestyles=ls, transform=ccrs.PlateCarree())
 
 
-def draw_strip(ax, prob, bottom_labels, side_label, extent):
+def draw_strip(ax, prob, bottom_labels, side_label, extent, fs=1.0):
     """Signed share of members active in the dominant half of the wave cycle:
     + enhanced, - suppressed, along longitude."""
     signed = xr.where(prob.enhanced >= prob.suppressed, prob.enhanced, -prob.suppressed)
@@ -246,29 +246,30 @@ def draw_strip(ax, prob, bottom_labels, side_label, extent):
     ax.set_yticks([])
     ticks = range(extent[0] + 10, extent[1], 10)
     ax.set_xticks(ticks)
-    ax.tick_params(labelsize=8, labelbottom=bottom_labels, length=2)
+    ax.tick_params(labelsize=8 * fs, labelbottom=bottom_labels, length=2)
     if bottom_labels:
         ax.set_xticklabels([f"{x}°E" for x in ticks])
     if side_label:
-        ax.text(-0.01, 0.5, "5S-5N", transform=ax.transAxes, ha="right", va="center", fontsize=7)
+        ax.text(-0.01, 0.5, "5S-5N", transform=ax.transAxes, ha="right", va="center", fontsize=7 * fs)
     return pc
 
 
-def make_figure(panels, wave, nrows, ncols, title, out, figsize, margins):
+def make_figure(panels, wave, nrows, ncols, title, out, figsize, margins, fs=1.0):
     """panels: (rain Dataset, wave OLR, 5S-5N member shares, title) per panel.
-    margins: (top, bottom, hspace) of the map grid, in figure fractions."""
+    margins: (top, bottom, hspace) of the map grid, in figure fractions.
+    fs scales every font but the suptitle's."""
     top, bottom, hspace = margins
     fig = plt.figure(figsize=figsize)
     grid = fig.add_gridspec(nrows, ncols, left=0.05, right=0.98, top=top, bottom=bottom,
                             wspace=0.1, hspace=hspace)
     for i, (rain, olr, prob, label) in enumerate(panels):
         ax = fig.add_subplot(grid[i // ncols, i % ncols], projection=ccrs.PlateCarree())
-        basemap(ax, left_labels=i % ncols == 0, extent=MAP_EXTENT)
+        basemap(ax, left_labels=i % ncols == 0, extent=MAP_EXTENT, fs=fs)
         rain = clip(rain, MAP_EXTENT)
         pc = draw_rain(ax, rain)
-        draw_wave(ax, olr, wave)
+        draw_wave(ax, olr, wave, fs=fs)
         draw_combined(ax, rain, olr, wave)
-        ax.set_title(label, fontsize=10)
+        ax.set_title(label, fontsize=10 * fs)
         # the map keeps its aspect inside the grid cell: put the strip under
         # where it actually ended up, at the same width
         ax.apply_aspect()
@@ -276,19 +277,19 @@ def make_figure(panels, wave, nrows, ncols, title, out, figsize, margins):
         strip_h = 0.06 * pos.height
         sax = fig.add_axes([pos.x0, pos.y0 - strip_h - 0.003, pos.width, strip_h])
         strip = draw_strip(sax, prob, bottom_labels=i // ncols == nrows - 1, side_label=i % ncols == 0,
-                           extent=MAP_EXTENT)
+                           extent=MAP_EXTENT, fs=fs)
 
     cax = fig.add_axes([0.06, 0.07, 0.42, 0.012])
     cb = fig.colorbar(pc, cax=cax, orientation="horizontal", ticks=RAIN_LEVELS, extend="both")
     cb.set_label("rainfall anomaly (mm day$^{-1}$), ensemble mean\n"
-                 "vs. the model's 2006-2024 reforecast climate", fontsize=9)
-    cb.ax.tick_params(labelsize=8)
+                 "vs. the model's 2006-2024 reforecast climate", fontsize=9 * fs)
+    cb.ax.tick_params(labelsize=8 * fs)
     sax = fig.add_axes([0.54, 0.07, 0.42, 0.012])
     cs = fig.colorbar(strip, cax=sax, orientation="horizontal", ticks=STRIP_LEVELS,
                       format=lambda x, _: f"{abs(x):.0%}")
-    cs.set_label(f"strip: share of members with an active {wave} (amplitude > 1) at 5S-5N\n"
-                 "suppressed half (orange)  |  enhanced half (purple)", fontsize=9)
-    cs.ax.tick_params(labelsize=8)
+    cs.set_label(f"strip: share of members with an active {wave} (amplitude > 1)\n"
+                 "at 5S-5N, suppressed half (orange)  |  enhanced half (purple)", fontsize=9 * fs)
+    cs.ax.tick_params(labelsize=8 * fs)
 
     lv = ", ".join(str(v) for v in WAVE_LEVELS[wave])
     cut = combined_cut(wave)
@@ -313,7 +314,7 @@ def plot_weekly_mjo(weekly):
         label = f"Week {week + 1}: {dates[0]:%d %b} - {dates[-1]:%d %b}"
         panels.append((rain, olr.mean("time"), prob.mean("time"), label))
     make_figure(panels, "MJO", 2, 2, f"ECMWF weekly rainfall anomaly and the MJO, init {date_str}",
-                f"{plot_path}rain_anomaly_mjo_weekly.png", figsize=(12, 12), margins=(0.86, 0.17, 0.3))
+                f"{plot_path}rain_anomaly_mjo_weekly.png", figsize=(12, 12), margins=(0.86, 0.17, 0.3), fs=1.4)
 
 
 def plot_daily_kelvin(daily):

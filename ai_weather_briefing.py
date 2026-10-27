@@ -621,6 +621,18 @@ briefing_plot_names = [
 for name in briefing_plot_names:
     picture_paths[name] = f"{briefing_plots_path}/{name}.png"
 
+# Tropical wave / MJO plots of the olr_waves stage (olr_wave_rain_maps.py,
+# olr_wave_filter.py, mjo_rmm_index.py), on the ECMWF date. Our own RMM phase
+# diagram replaces the chc-skills ECMWF one when it exists.
+olr_waves_path = f"plots/olr_waves/{ecmwf_date_str}"
+olr_wave_picture_paths = {
+    "MJO_map": f"{olr_waves_path}/rain_anomaly_mjo_weekly.png",
+    "hovmoller_olr_tropics_prob": f"{olr_waves_path}/waves_probability.png",
+}
+picture_paths.update(olr_wave_picture_paths)
+if os.path.exists(f"{olr_waves_path}/mjo_rmm_phase_diagram.png"):
+    picture_paths["mjo_rmm_ecmwf"] = f"{olr_waves_path}/mjo_rmm_phase_diagram.png"
+
 def resolve_picture_path(path):
     """Prefer the given path; also try the icpac10mm <-> 10mm filename alias."""
     if os.path.exists(path):
@@ -743,6 +755,10 @@ optional_picture_names.add("ECMWF_tercile_plot_EA")
 # Downscaled onset/spell/exceedance plots are new and each generator step
 # runs inside its own try/except, so a missing one is tolerated the same way.
 optional_picture_names |= set(downscaled_picture_paths)
+
+# The olr_waves stage needs ERA5/ECDS/dynamical downloads of its own and runs
+# with continue-on-error, so its plots are optional too.
+optional_picture_names |= set(olr_wave_picture_paths)
 
 # Picture-only shapes (no AI narration). Fill only when the shape name or
 # alt text equals a plot stem exactly (e.g. kenya_weekly_rainfall_analog_years).
