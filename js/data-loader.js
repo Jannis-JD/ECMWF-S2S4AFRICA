@@ -22,6 +22,13 @@ class DataLoader {
             throw error;
         }
     }
+    
+    /**
+     * Set the forecast type and update URLs accordingly
+     */
+    setForecastType(forecastType) {
+        this.forecastType = forecastType || 's2s';
+    }
 
     getAvailableDates() {
         if (!this.catalog || !this.catalog.dates) return [];

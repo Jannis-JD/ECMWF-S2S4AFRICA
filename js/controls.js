@@ -81,6 +81,9 @@ class UIController {
 
         // Remember current selection so we can restore it if still available
         const previousId = this.layerTypeSelect.dataset.lastValue || 'mean';
+        
+        // Cache forecast type
+        this.currentForecastType = null;
 
         this.layerTypeSelect.innerHTML = '';
 

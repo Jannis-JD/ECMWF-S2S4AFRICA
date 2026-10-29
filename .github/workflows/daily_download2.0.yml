@@ -33,15 +33,25 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run download script
+      - name: Run download S2S data
         continue-on-error: true
         run: |
-          python download_s2s.py
+          python get_ECMWF_functions.py
 
-      - name: Generate plots
+      - name: Run download Medium-Range data
+        continue-on-error: true
+        run: |
+          python download_medium_range.py
+
+      - name: Generate S2S plots
         continue-on-error: true
         run: |
           python plot_s2s.py
+
+      - name: Generate Medium-Range plots
+        continue-on-error: true
+        run: |
+          python plot_medium_range.py
 
       - name: perform downscaling
         continue-on-error: true

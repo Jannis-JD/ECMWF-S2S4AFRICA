@@ -38,6 +38,25 @@
             Press q to toggle sidebar
         </div>
 
+        <!-- Forecast Type Selector -->
+        <div class="control-group">
+            <div style="margin-bottom:10px;">
+                <label style="font-weight:500; display:block; margin-bottom:5px;">Forecast Type</label>
+                <div style="display:flex; border:1px solid #555; border-radius:6px; background:#222;">
+                    <label style="flex:1; text-align:center; padding:8px 0; cursor:pointer; border-right:1px solid #444;" class="forecast-toggle" data-type="s2s">
+                        <input type="radio" name="forecast-type" value="s2s" checked style="display:none;">
+                        <span style="font-size:0.75em;">Subseasonal Forecast (S2S)</span><br>
+                        <small style="font-size:0.5em; opacity:0.6;">~1.5° Resolution<br>42-Day Forecast</small>
+                    </label>
+                    <label style="flex:1; text-align:center; padding:8px 0; cursor:pointer;" class="forecast-toggle" data-type="medium">
+                        <input type="radio" name="forecast-type" value="medium" style="display:none;">
+                        <span style="font-size:0.75em;">Medium-Range Forecast</span><br>
+                        <small style="font-size:0.5em; opacity:0.6;">~9.3 km Resolution<br>10-Day Forecast</small>
+                    </label>
+                </div>
+            </div>
+        </div>
+
         <!-- Init Date -->
         <div class="control-group">
             <label for="init-date">Initialization Date:</label>
