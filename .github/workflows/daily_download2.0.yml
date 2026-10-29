@@ -39,7 +39,6 @@ jobs:
           python get_ECMWF_functions.py
 
       - name: Run download Medium-Range data
-        continue-on-error: true
         run: |
           python download_medium_range.py
 
@@ -49,7 +48,6 @@ jobs:
           python plot_s2s.py
 
       - name: Generate Medium-Range plots
-        continue-on-error: true
         run: |
           python plot_medium_range.py
 

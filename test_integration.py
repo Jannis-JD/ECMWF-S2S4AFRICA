@@ -120,10 +120,14 @@ def test_variable_separation():
         "Probability function exists": "def download_probability_variables" in content,
         "Source AWS": 'source="aws"' in content,
         "Model IFS": 'model="ifs"' in content,
-        "Stream oper": 'stream="oper"' in content,
-        "Stream enfo": 'stream="enfo"' in content,
-        "3-hourly steps": "step=range(0, 241, 3)" in content,
-        "24-hour accumulations": 'f"{i*24}-{(i+1)*24}"' in content or '[f\"{i*24}' in content,
+        "Stream oper": '"stream": "oper"' in content,
+        "Stream enfo": '"stream": "enfo"' in content,
+        "Deterministic type": '"type": "fc"' in content,
+        "Probability type": '"type": "ep"' in content,
+        "0.1 degree resolution": 'RESOLUTION = "0p1"' in content,
+        "3-hourly steps": 'list(range(0, 241, 3))' in content,
+        "24-hour accumulations": 'f"{24 * i}-{24 * (i + 1)}"' in content,
+        "12-hour probability ranges": 'f"{12 * i}-{12 * i + 24}"' in content,
     }
     
     all_passed = True
