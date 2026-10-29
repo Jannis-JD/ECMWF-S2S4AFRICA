@@ -1,0 +1,76 @@
+name: Medium-range forecast pipeline
+
+on:
+  schedule:
+    - cron: "16 00 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  medium-range:
+    runs-on: ubuntu-latest
+    env:
+      DATA_BRANCH: main
+      WEBSITE_BRANCH: website
+
+    steps:
+      - name: Check out data branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main_repo
+
+      - name: Check out website branch
+        uses: actions/checkout@v4
+        with:
+          ref: website
+          path: website_repo
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r website_repo/requirements.txt
+
+      - name: Resolve forecast date
+        id: dates
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime, timezone
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"date={datetime.now(timezone.utc):%Y-%m-%d}\n")
+          PY
+
+      - name: Download ECMWF medium-range data into main
+        working-directory: main_repo
+        env:
+          ECMWF_FORECAST_DATE: ${{ steps.dates.outputs.date }}
+        run: python ../website_repo/download_medium_range.py
+
+      - name: Publish JSON and figures to website checkout
+        working-directory: main_repo
+        run: |
+          python ../website_repo/scripts/medium_range_to_json.py \
+            --date "${{ steps.dates.outputs.date }}" \
+            --source-dir data \
+            --website-dir ../website_repo
+
+      - name: Commit generated medium-range website assets
+        working-directory: website_repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/medium plots/medium
+          if git diff --cached --quiet; then
+            echo "No medium-range changes to commit."
+          else
+            git commit -m "chore: update medium-range forecast [${{ steps.dates.outputs.date }}]"
+            git push origin website
+          fi

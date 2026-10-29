@@ -191,6 +191,25 @@ class UIController {
             });
         }
 
+        // ── Forecast type ─────────────────────────────────────────────
+        document.querySelectorAll('.forecast-toggle').forEach(toggle => {
+            toggle.addEventListener('click', async () => {
+                const type = toggle.dataset.type || 's2s';
+                if (this.dataLoader.forecastType === type || this.isUpdating) return;
+                this.dataLoader.setForecastType(type);
+                this.weatherMap.dataLoader.setForecastType(type);
+                this.isUpdating = true;
+                try {
+                    await this.dataLoader.loadCatalog();
+                    this.populateDates();
+                    await this.autoSelectAndPlot();
+                    document.querySelectorAll('.forecast-toggle').forEach(node => node.classList.toggle('active', node.dataset.type === type));
+                } finally {
+                    this.isUpdating = false;
+                }
+            });
+        });
+
         // ── Opacity ────────────────────────────────────────────────────
         this.opacitySlider.addEventListener('input', (e) => {
             this.opacityValue.textContent = `${e.target.value}%`;
@@ -461,7 +480,8 @@ class UIController {
     }
 
     updateTimestamp() {
-        fetch(`${CONFIG.dataBaseUrl}/weekly/catalog.json?t=${Date.now()}`)
+        const base = this.dataLoader.forecastType === 'medium' ? CONFIG.mediumDataBaseUrl : CONFIG.dataBaseUrl;
+        fetch(`${base}/weekly/catalog.json?t=${Date.now()}`)
             .then(r => r.json())
             .then(data => {
                 if (data.last_updated) {

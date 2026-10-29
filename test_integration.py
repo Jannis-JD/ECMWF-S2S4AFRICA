@@ -61,6 +61,31 @@ def test_download_script():
         return False
 
 
+
+
+def test_total_precipitation_test_script():
+    """Verify the dedicated two-week total-precipitation test configuration."""
+    script_path = Path("test_medium_range_total_precipitation.py")
+    if not script_path.exists():
+        print("❌ total-precipitation test script not found")
+        return False
+
+    content = script_path.read_text()
+    checks = {
+        "ECMWF source": 'source="ecmwf"' in content,
+        "Total precipitation": 'param=["tp"]' in content,
+        "Two-week request": 'range(1, 15)' in content,
+        "Operational stream": 'stream="oper"' in content,
+        "Deterministic forecast": 'type="fc"' in content,
+        "Separate test output": "medium_range_test" in content,
+    }
+    failed = [name for name, passed in checks.items() if not passed]
+    if failed:
+        print(f"❌ Invalid total-precipitation test configuration: {', '.join(failed)}")
+        return False
+    print("✅ Dedicated two-week total-precipitation test is configured")
+    return True
+
 def test_plot_script():
     """Test that plot_medium_range.py exists."""
     script_path = Path("plot_medium_range.py")
@@ -118,7 +143,8 @@ def test_variable_separation():
         "Instantaneous function exists": "def download_instantaneous_variables" in content,
         "Accumulated function exists": "def download_accumulated_variables" in content,
         "Probability function exists": "def download_probability_variables" in content,
-        "Source AWS": 'source="aws"' in content,
+        "Source ECMWF portal": 'source="ecmwf"' in content,
+        "ECMWF portal URL": "https://data.ecmwf.int/forecasts/" in content,
         "Model IFS": 'model="ifs"' in content,
         "Stream oper": '"stream": "oper"' in content,
         "Stream enfo": '"stream": "enfo"' in content,
@@ -152,6 +178,7 @@ def main():
         ("Package Installation", test_package_installed),
         ("Download Script", test_download_script),
         ("Plot Script", test_plot_script),
+        ("Total-Precipitation Test", test_total_precipitation_test_script),
         ("Requirements File", test_requirements_updated),
         ("GitHub Workflow", test_workflow_updated),
         ("Variable Separation", test_variable_separation),

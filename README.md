@@ -66,3 +66,9 @@ Plots are regenerated daily via GitHub Actions.
 ### Data source
 
 Forecast data from [ECMWF](https://www.ecmwf.int/) subseasonal ensemble products.
+
+Medium-range forecast downloads use the [ECMWF Open Data portal](https://data.ecmwf.int/forecasts/)
+through the `ecmwf-opendata` Python client. The downloaded ECMWF Open Data is provided under
+the ECMWF Open Data Terms of Use and requires attribution under the [CC BY 4.0 licence](https://creativecommons.org/licenses/by/4.0/).
+
+A dedicated two-week total-precipitation test is available at [`test_medium_range_total_precipitation.py`](./test_medium_range_total_precipitation.py). It uses the normal `ecmwf-opendata` client workflow, requests only deterministic cumulative `tp` at 24-hour steps from 24 to 336 hours, and writes to `data/medium_range_test/` without invoking the broader S2S or satellite workflows.

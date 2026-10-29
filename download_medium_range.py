@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Download ECMWF IFS medium-range open data from AWS."""
+"""Download ECMWF IFS medium-range open data from the ECMWF portal.
+
+The data is provided under the ECMWF Open Data Terms of Use and the
+Creative Commons Attribution 4.0 International (CC BY 4.0) licence.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +16,7 @@ import xarray as xr
 from ecmwf.opendata import Client
 
 DATA_ROOT = Path("data")
+ECMWF_OPEN_DATA_URL = "https://data.ecmwf.int/forecasts/"
 RESOLUTION = "0p1"
 INSTANTANEOUS_PARAMS = ["2t", "msl", "10u", "10v", "d2m"]
 ACCUMULATED_PARAMS = ["tp", "tpg1", "tpg5", "10fg"]
@@ -30,7 +35,7 @@ def ensure_data_dir(date_str):
 
 def _client():
     return Client(
-        source="aws",
+        source="ecmwf",
         model="ifs",
         resol=RESOLUTION,
         maximum_retries=3,
@@ -117,7 +122,7 @@ def convert_to_netcdf(date_str):
 def main():
     date_str = os.environ.get("ECMWF_FORECAST_DATE", get_current_date())
     print("=" * 70)
-    print("ECMWF IFS Medium-Range Download (AWS, 0.1 degree)")
+    print("ECMWF IFS Medium-Range Download (ECMWF Open Data, 0.1 degree)")
     print("=" * 70)
     print(f"Date: {date_str}\n")
     ensure_data_dir(date_str)

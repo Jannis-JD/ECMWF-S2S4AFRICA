@@ -2,6 +2,7 @@ class DataLoader {
     constructor() {
         this.cache = new Map();
         this.catalog = null;
+        this.forecastType = 's2s';
     }
 
     // ============================================
@@ -10,7 +11,8 @@ class DataLoader {
 
     async loadCatalog() {
         try {
-            const url = `${CONFIG.dataBaseUrl}/weekly/catalog.json`;
+            const base = this.forecastType === 'medium' ? CONFIG.mediumDataBaseUrl : CONFIG.dataBaseUrl;
+            const url = `${base}/weekly/catalog.json`;
             console.log('Loading catalog from:', url);
             const response = await fetch(url);
             if (!response.ok) throw new Error(`Failed to load catalog: ${response.status}`);
@@ -53,7 +55,8 @@ class DataLoader {
      */
     async layerExists(initDate, varKey, layerTypeId) {
         const folder = CONFIG.getFolderName(varKey, layerTypeId);
-        const url = `${CONFIG.dataBaseUrl}/weekly/${initDate}/${folder}/${folder}_${initDate}_w01.json`;
+        const base = this.forecastType === 'medium' ? CONFIG.mediumDataBaseUrl : CONFIG.dataBaseUrl;
+        const url = `${base}/weekly/${initDate}/${folder}/${folder}_${initDate}_w01.json`;
         const cacheKey = `exists:${url}`;
 
         if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
@@ -96,9 +99,10 @@ class DataLoader {
         const weekPad = String(week).padStart(2, '0');
 
         // Build candidate URLs (handles minor naming inconsistencies)
+        const base = this.forecastType === 'medium' ? CONFIG.mediumDataBaseUrl : CONFIG.dataBaseUrl;
         const urls = [
-            `${CONFIG.dataBaseUrl}/weekly/${initDate}/${folder}/${folder}_${initDate}_w${weekPad}.json`,
-            `${CONFIG.dataBaseUrl}/weekly/${initDate}/${folder}/${folder}_${initDate}_w${week}.json`,
+            `${base}/weekly/${initDate}/${folder}/${folder}_${initDate}_w${weekPad}.json`,
+            `${base}/weekly/${initDate}/${folder}/${folder}_${initDate}_w${week}.json`,
         ];
 
         let lastError = null;

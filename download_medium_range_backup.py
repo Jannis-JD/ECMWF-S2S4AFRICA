@@ -6,8 +6,9 @@ This script downloads 10-day forecasts from ECMWF's open data repository.
 It separates variables into instantaneous and accumulated types to avoid
 GRIB data corruption issues when mixing them in the same request.
 
-Data source: https://registry.opendata.aws/ecmwf-forecasts/
+Data source: https://data.ecmwf.int/forecasts/
 Resolution: 0.1 degree (~9.3 km)
+Licence: ECMWF Open Data Terms of Use, CC BY 4.0
 """
 
 import os
@@ -44,7 +45,7 @@ def download_instantaneous_variables(date_str):
         return True
     
     try:
-        client = Client(source="aws")
+        client = Client(source="ecmwf")
         
         client.retrieve(
             model="ifs",
@@ -66,7 +67,7 @@ def download_instantaneous_variables(date_str):
     steps_24h = [f"{i*24}-{(i+1)*24}" for i in range(10)]
     
     try:
-        client = Client(source="aws")
+        client = Client(source="ecmwf")
         client.retrieve(
             model="ifs",
             stream="oper",
@@ -103,7 +104,7 @@ def download_probability_variables(date_str):
     OUTPUT_FILE = f"data/{date_str}/ECMWF_medium_prob.grib2"
     
     try:
-        client = Client(source="aws")
+        client = Client(source="ecmwf")
         steps_24h = [f"{i*24}-{(i+1)*24}" for i in range(10)]
         
         client.retrieve(

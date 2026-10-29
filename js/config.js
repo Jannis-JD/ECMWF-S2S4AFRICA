@@ -6,6 +6,7 @@ const CONFIG = {
 
     // Data URL
     dataBaseUrl: 'https://raw.githubusercontent.com/alecjong-lab/ECMWF-S2S4AFRICA/website/data',
+    mediumDataBaseUrl: 'https://raw.githubusercontent.com/alecjong-lab/ECMWF-S2S4AFRICA/website/data/medium',
 
     // Africa bounding box
     mapBounds: {
