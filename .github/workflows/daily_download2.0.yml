@@ -120,6 +120,19 @@ jobs:
             cd main_repo
             python download_s2s_legacy.py
 
+      - name: Run deterministic medium-range download
+        id: download_medium_range
+        uses: nick-fields/retry@v3
+        continue-on-error: true
+        env:
+          ECMWF_FORECAST_DATE: ${{ steps.dates.outputs.ecmwf_date }}
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          command: |
+            cd main_repo
+            python download_medium_range.py
+
       - name: Get briefing date
         id: briefing_date
         run: echo "date=${{ steps.dates.outputs.run_date }}" >> $GITHUB_OUTPUT
