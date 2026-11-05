@@ -1,0 +1,109 @@
+# Daily health check of the "Daily ECMWF Download" run. Collects the run's
+# jobs, step conclusions (incl. failures hidden by continue-on-error), logs,
+# annotations, the previous runs' failures and the bucket upload counts
+# (monitor/collect_run.py), has Claude review them through the claude CLI
+# (logged in with the CLAUDE_CODE_OAUTH_TOKEN secret, as the image_captions
+# stage does) and emails the report. If Claude fails, the deterministic
+# summary is emailed instead, so a report always goes out.
+#
+# The daily run is dispatched at ~03:01 UTC and finishes by ~06:30 UTC; this
+# runs at 08:00 UTC. A day with no run at all is reported as BROKEN (the
+# external cron that dispatches it failed). Read-only: no GCP auth, no pushes.
+# Scheduled workflows only run from the default branch, so this takes effect
+# once merged to main.
+name: Daily Run Monitor
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run id to review (blank = today's daily run)"
+        required: false
+        default: ""
+      email:
+        description: "Send the report to (blank = MONITOR_EMAIL variable, else the default)"
+        required: false
+        default: ""
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ inputs.run_id }}
+      OUT_DIR: monitor_out
+      REPORT_TO: ${{ inputs.email || vars.MONITOR_EMAIL || 'alec.jong@gmail.com' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect run details
+        run: python3 monitor/collect_run.py
+
+      - name: Install Claude Code
+        id: install
+        continue-on-error: true
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Review the run with Claude
+        id: review
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          claude -p "$(cat monitor/prompt.md)" \
+            --model sonnet \
+            --allowedTools "Read,Grep,Glob" \
+            --max-turns 40 \
+            --output-format text > monitor_out/claude_report.md
+          # A usable report starts with the STATUS line.
+          grep -m1 -qE '^STATUS: (OK|ATTENTION|BROKEN)' monitor_out/claude_report.md
+
+      - name: Pick report and subject
+        id: report
+        run: |
+          if [ "${{ steps.review.outcome }}" = "success" ]; then
+            # Drop anything Claude printed before the STATUS line.
+            sed -n '/^STATUS: /,$p' monitor_out/claude_report.md > monitor_out/report.md
+          else
+            {
+              cat monitor_out/summary.md
+              echo
+              echo "_Claude review unavailable (install or review step failed); this is the raw summary._"
+            } > monitor_out/report.md
+          fi
+          status=$(head -1 monitor_out/report.md | sed 's/^STATUS: //')
+          headline=$(sed -n '2,5{/[^[:space:]]/{p;q}}' monitor_out/report.md | cut -c1-120)
+          echo "subject=[S2S monitor] ${status:-UNKNOWN} $(date -u +%F)${headline:+ - $headline}" >> "$GITHUB_OUTPUT"
+          echo "## Report" >> "$GITHUB_STEP_SUMMARY"
+          cat monitor_out/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Email the report
+        uses: dawidd6/action-send-mail@v16
+        with:
+          server_address: smtp.resend.com
+          server_port: 587
+          username: resend
+          password: ${{ secrets.RESEND_API_KEY }}
+          subject: ${{ steps.report.outputs.subject }}
+          to: ${{ env.REPORT_TO }}
+          from: "S2S Pipeline Monitor <info@dashboards.rhizaresearch.org>"
+          html_body: file://monitor_out/report.md
+          convert_markdown: true
+
+      - name: Keep the collected material
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitor-${{ github.run_id }}
+          path: monitor_out/
+          retention-days: 14
