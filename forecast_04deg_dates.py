@@ -309,17 +309,44 @@ def verify_zarr(fs, dest, local, nc_path):
                 raise IOError(f"archived zarr's {coord} differs from the CHC file's")
 
 
-def _download_chc(src, local):
-    """Stream CHC's file at src to local, checking its size against CHC's."""
+def _download_chc(src, local, attempts=6):
+    """
+    Stream CHC's file at src to local, checking its size against CHC's. CHC's server
+    sometimes drops the connection partway through the ~2 GB file or answers with a
+    passing 5xx, so a failed attempt is retried (with a growing pause) and resumes from
+    the bytes already written through a Range request when the server honours it.
+    """
     import requests
-    with requests.get(src, stream=True, timeout=60) as r:
-        r.raise_for_status()
-        size = int(r.headers['Content-Length'])
-        with open(local, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=16 * 2**20):
-                f.write(chunk)
-    if os.path.getsize(local) != size:
-        raise IOError(f"downloaded {os.path.getsize(local)} bytes, CHC has {size}")
+    size = None
+    for attempt in range(1, attempts + 1):
+        have = os.path.getsize(local) if os.path.exists(local) else 0
+        headers = {'Range': f'bytes={have}-'} if have else {}
+        try:
+            with requests.get(src, stream=True, timeout=60, headers=headers) as r:
+                r.raise_for_status()
+                if r.status_code == 206:
+                    size = int(r.headers['Content-Range'].rsplit('/', 1)[1])
+                    mode = 'ab'
+                else:  # a full answer: start over
+                    size = int(r.headers['Content-Length'])
+                    mode = 'wb'
+                with open(local, mode) as f:
+                    for chunk in r.iter_content(chunk_size=16 * 2**20):
+                        f.write(chunk)
+            if os.path.getsize(local) == size:
+                return
+            raise IOError(f"downloaded {os.path.getsize(local)} bytes, CHC has {size}")
+        except (requests.RequestException, IOError) as e:
+            status = getattr(getattr(e, 'response', None), 'status_code', None)
+            if status == 416:  # the partial file is unusable: start over
+                os.remove(local)
+            elif status is not None and 400 <= status < 500 and status not in (408, 429):
+                raise
+            if attempt == attempts:
+                raise
+            # only the type: the text could hold CHC's (private) address
+            print(f"  download attempt {attempt} failed ({type(e).__name__}), retrying", file=sys.stderr)
+            time.sleep(min(30 * attempt, 120))
 
 
 def archive(dates=None, budget_minutes=None, delete_nc=False):
