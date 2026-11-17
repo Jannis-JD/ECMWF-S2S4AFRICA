@@ -1,0 +1,97 @@
+name: Test Medium-Range Download
+
+# Checks that download_medium_range.py (0.1 x 0.1 degree ECMWF IFS precipitation)
+# still produces a valid store. The script lives on main, so this workflow checks
+# out main for the script and dev for the checker. It makes no GCS calls and
+# uploads nothing: the store is written to a temporary folder and deleted at the end.
+#
+# Run it manually. Leave date_str blank to use the same date as the nightly run
+# (two days before today, UTC).
+
+on:
+  workflow_dispatch:
+    inputs:
+      date_str:
+        description: "Model date YYYY-MM-DD (blank = two days ago, UTC, as in the nightly run)"
+        required: false
+        default: ""
+
+# A new run makes the in-flight one irrelevant.
+concurrency:
+  group: test-medium-range-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  medium_range:
+    name: Download and validate medium-range precipitation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BOUNDING_BOX: "22.5,-21,-34.5,55.5"
+      OUTPUT_DIR: /tmp/medium_range_test/data
+      ZARR_NAME: medium_range_precip_01.zarr
+    steps:
+      - name: Checkout main (download script)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main_repo
+
+      - name: Checkout dev (validation script)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: dev_repo
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: main_repo/requirements.txt
+
+      - name: Install dependencies
+        working-directory: main_repo
+        run: pip install -r requirements.txt
+
+      - name: Resolve model date
+        id: date
+        env:
+          INPUT_DATE: ${{ inputs.date_str }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from datetime import datetime, timedelta, timezone
+
+          supplied = os.environ.get("INPUT_DATE", "").strip()
+          if supplied:
+              day = datetime.strptime(supplied, "%Y-%m-%d").date()
+          else:
+              day = datetime.now(timezone.utc).date() - timedelta(days=2)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"date={day.isoformat()}\n")
+          print(f"Model date {day.isoformat()}")
+          PY
+
+      - name: Download medium-range precipitation
+        working-directory: main_repo
+        env:
+          DATE_STR: ${{ steps.date.outputs.date }}
+          OUTPUT_DIR: ${{ env.OUTPUT_DIR }}
+        run: python download_medium_range.py
+
+      - name: Check the store
+        working-directory: dev_repo
+        env:
+          MAX_STEP: "144"
+          STEP_INTERVAL: "6"
+        run: |
+          store="${OUTPUT_DIR}/${{ steps.date.outputs.date }}/${ZARR_NAME}"
+          python check_medium_range.py "$store"
+
+      - name: Remove the test store
+        if: always()
+        run: rm -rf "${OUTPUT_DIR}"
