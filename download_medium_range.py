@@ -15,6 +15,8 @@ Requirements:
 
 Notes:
   * Deterministic IFS forecast (stream oper, type fc) at 0.1 degrees.
+  * Only the 00 and 12 UTC runs are downloaded. They have steps out to 360 h
+    (15 days); the 06 and 18 UTC runs stop at 144 h, so they are not used.
   * The open-data server delivers global GRIB2 files; there is no server-side
     area subsetting, so the cropping to Africa is done locally afterwards.
   * "tp" is accumulated from the start of the forecast, in metres of water.
@@ -191,8 +193,8 @@ def ensure_store(init, args, out_dir):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--date", default=date_str, help="Model date, YYYY-MM-DD or YYYYMMDD. Default: DATE_STR or two days ago")
-    p.add_argument("--time", type=int, default=0, choices=[0, 6, 12, 18], help="Run time UTC. Default: 0")
-    p.add_argument("--max-step", type=int, default=144, help="Last forecast step in hours. Default: 144")
+    p.add_argument("--time", type=int, default=0, choices=[0, 12], help="Run time UTC, 0 or 12. Default: 0")
+    p.add_argument("--max-step", type=int, default=336, help="Last forecast step in hours (336 = 2 weeks). Default: 336")
     p.add_argument("--step-interval", type=int, default=6, help="Hours between steps. Default: 6")
     p.add_argument("--source", default="aws", choices=["ecmwf", "azure", "aws", "google"],
                    help="Mirror to download from. Default: aws")
