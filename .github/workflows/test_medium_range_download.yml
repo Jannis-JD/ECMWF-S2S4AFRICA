@@ -86,7 +86,7 @@ jobs:
       - name: Check the store
         working-directory: dev_repo
         env:
-          MAX_STEP: "144"
+          MAX_STEP: "336"
           STEP_INTERVAL: "6"
         run: |
           store="${OUTPUT_DIR}/${{ steps.date.outputs.date }}/${ZARR_NAME}"
